@@ -1,0 +1,49 @@
+.DS_Store
+/.build
+/Packages
+xcuserdata/
+DerivedData/
+.swiftpm/configuration/registries.json
+.swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
+.netrc
+
+# macOS
+*.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+
+# Xcode
+*.xcworkspace
+*.xcodeproj
+xcuserdata/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.xcuserstate
+project.xcworkspace/
+xcshareddata/
+xcschemes/
+
+# Build products
+.build/
+*.app
+*.dSYM
+*.ipa
+
+# Swift Package Manager
+.swiftpm/
+Packages/
+.build/
+
+# App specific
+SpaceGuard.app/
+SpaceGuard.dmg
+SpaceGuard.zip
+
+# Temporary files
+*.tmp
+*.cache
+*.log
