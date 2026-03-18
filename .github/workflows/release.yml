@@ -26,7 +26,7 @@ jobs:
       - name: Set up Swift
         uses: swift-actions/setup-swift@v2
         with:
-          swift-version: '5.9'
+          swift-version: '6.0'
 
       - name: Debug Environment
         run: |
@@ -42,6 +42,7 @@ jobs:
 
       - name: Build Release (Universal Binary)
         run: |
+          # Build with Swift 6.0+ which supports --arch flags
           swift build --configuration release --arch arm64 --arch x86_64
           echo "Build completed successfully"
 
