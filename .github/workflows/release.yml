@@ -2,6 +2,8 @@ name: Create Release
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'  # Trigger on version tags like v1.0.0, v1.1.0, etc.
   workflow_dispatch:  # Allow manual triggering
