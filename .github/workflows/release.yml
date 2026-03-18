@@ -13,7 +13,7 @@ on:
 
 jobs:
   build-and-release:
-    runs-on: macos-latest
+    runs-on: macos-14
     permissions:
       contents: write  # Needed to create releases
 
@@ -26,10 +26,38 @@ jobs:
         with:
           swift-version: '5.9'
 
-      - name: Build Release
+      - name: Debug Environment
         run: |
-          swift build --configuration release
+          echo "Swift version:"
+          swift --version
+          echo "Xcode version:"
+          xcodebuild -version
+          echo "macOS version:"
+          sw_vers
+          echo "Current directory:"
+          pwd
+          ls -la
+
+      - name: Build Release (Universal Binary)
+        run: |
+          swift build --configuration release --arch arm64 --arch x86_64
           echo "Build completed successfully"
+
+          # Verify universal binary (check both possible locations)
+          echo "Verifying executable architecture..."
+          if [ -f ".build/apple/Products/Release/SpaceGuard" ]; then
+            echo "Found in .build/apple/Products/Release/"
+            file .build/apple/Products/Release/SpaceGuard
+            lipo -info .build/apple/Products/Release/SpaceGuard
+          elif [ -f ".build/release/SpaceGuard" ]; then
+            echo "Found in .build/release/"
+            file .build/release/SpaceGuard
+            lipo -info .build/release/SpaceGuard
+          else
+            echo "Error: SpaceGuard executable not found"
+            find .build -name "SpaceGuard" -type f 2>/dev/null | head -10
+            exit 1
+          fi
 
       - name: Make scripts executable
         run: |
@@ -52,8 +80,10 @@ jobs:
           sed -i.bak "s/VERSION=\"1.0.0\"/VERSION=\"$VERSION\"/" scripts/make-dmg.sh
           ./scripts/make-dmg.sh
 
-          # Restore original file
-          mv scripts/make-dmg.sh.bak scripts/make-dmg.sh
+          # Restore original file if backup exists
+          if [ -f "scripts/make-dmg.sh.bak" ]; then
+            mv scripts/make-dmg.sh.bak scripts/make-dmg.sh
+          fi
 
           DMG_NAME="SpaceGuard-$VERSION.dmg"
           echo "DMG_NAME=$DMG_NAME" >> $GITHUB_ENV

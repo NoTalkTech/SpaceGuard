@@ -5,6 +5,11 @@ struct SettingsView: View {
     @State private var rules = CleanupRules.load()
     @State private var diskStats: DiskStats?
 
+    // Dialog states
+    @State private var showAddOverride = false
+    @State private var showAddPattern = false
+    @State private var showConfigureSchedule = false
+
     var body: some View {
         TabView {
             generalSettings
@@ -17,6 +22,11 @@ struct SettingsView: View {
                     Label("Cleanup", systemImage: "trash")
                 }
 
+            advancedSettings
+                .tabItem {
+                    Label("Advanced", systemImage: "slider.horizontal.3")
+                }
+
             diskInfoView
                 .tabItem {
                     Label("Disk Info", systemImage: "internaldrive")
@@ -25,6 +35,33 @@ struct SettingsView: View {
         .frame(width: 500, height: 400)
         .onAppear {
             loadDiskStats()
+        }
+        .sheet(isPresented: $showAddOverride) {
+            AddCustomRiskOverrideView(
+                isPresented: $showAddOverride,
+                customRiskOverrides: $rules.customRiskOverrides
+            )
+            .onDisappear {
+                saveRules()
+            }
+        }
+        .sheet(isPresented: $showAddPattern) {
+            AddExclusionPatternView(
+                isPresented: $showAddPattern,
+                exclusionPatterns: $rules.exclusionPatterns
+            )
+            .onDisappear {
+                saveRules()
+            }
+        }
+        .sheet(isPresented: $showConfigureSchedule) {
+            ConfigureScheduleView(
+                isPresented: $showConfigureSchedule,
+                scheduledCleanup: $rules.scheduledCleanup
+            )
+            .onDisappear {
+                saveRules()
+            }
         }
     }
 
@@ -154,6 +191,74 @@ struct SettingsView: View {
         .padding()
     }
 
+    private var advancedSettings: some View {
+        Form {
+            Section("File Type Rules") {
+                VStack(alignment: .leading, spacing: 12) {
+                    Toggle("Enable file type filtering", isOn: .constant(!rules.fileTypeRules.whitelistedExtensions.isEmpty))
+                        .help("Only allow specific file extensions to be cleaned")
+
+                    TextField("Whitelisted extensions (comma-separated)", text: .constant(rules.fileTypeRules.whitelistedExtensions.joined(separator: ", ")))
+                        .disabled(true)
+                        .help("e.g., 'log,cache,tmp' - leave empty to allow all")
+
+                    TextField("Blacklisted extensions (comma-separated)", text: .constant(rules.fileTypeRules.blacklistedExtensions.joined(separator: ", ")))
+                        .disabled(true)
+                        .help("e.g., 'app,dmg,pkg' - these will never be cleaned")
+                }
+            }
+
+            Section("Custom Risk Overrides") {
+                List(rules.customRiskOverrides) { override in
+                    HStack {
+                        Text(override.path)
+                        Spacer()
+                        Text(override.riskLevel.rawValue)
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                Button("Add Custom Override") {
+                    showAddOverride = true
+                }
+            }
+
+            Section("Exclusion Patterns") {
+                List(rules.exclusionPatterns, id: \.self) { pattern in
+                    Text(pattern)
+                }
+
+                Button("Add Exclusion Pattern") {
+                    showAddPattern = true
+                }
+            }
+
+            Section("Scheduled Cleanup") {
+                if let schedule = rules.scheduledCleanup {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Toggle("Enable scheduled cleanup", isOn: .constant(schedule.enabled))
+
+                        if schedule.enabled {
+                            Text("Frequency: \(schedule.frequency.rawValue)")
+                            Text("Time: \(schedule.timeOfDay, style: .time)")
+
+                            if let lastRun = schedule.lastRun {
+                                Text("Last run: \(lastRun, style: .date) \(lastRun, style: .time)")
+                            } else {
+                                Text("Never run")
+                            }
+                        }
+                    }
+                }
+
+                Button("Configure Schedule") {
+                    showConfigureSchedule = true
+                }
+            }
+        }
+        .padding()
+    }
+
     private func loadDiskStats() {
         let scanner = DiskScanner()
         diskStats = scanner.getDiskUsage()
@@ -167,8 +272,11 @@ struct SettingsView: View {
         case .full: return .purple
         }
     }
-}
 
+    private func saveRules() {
+        rules.save()
+    }
+}
 struct SettingsView_Previews: PreviewProvider {
     static var previews: some View {
         SettingsView()

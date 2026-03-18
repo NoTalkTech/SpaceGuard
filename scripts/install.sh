@@ -21,13 +21,17 @@ if ! command -v swift &> /dev/null; then
     exit 1
 fi
 
-# Build the project
-echo "Building SpaceGuard..."
-swift build --configuration release
+# Build the project (Universal Binary)
+echo "Building SpaceGuard (Universal Binary for arm64/x86_64)..."
+swift build --configuration release --arch arm64 --arch x86_64
 
 # Create .app bundle
 echo "Creating application bundle..."
 ./scripts/create-app-bundle.sh
+
+# Sign the application bundle (ad-hoc signing)
+echo "Signing application bundle..."
+./scripts/sign.sh
 
 # Install to Applications
 APP_BUNDLE="SpaceGuard.app"

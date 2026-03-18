@@ -59,6 +59,12 @@ struct CleanupRules: Codable {
         "com.jetbrains.resharper"
     ]
 
+    // Advanced rules
+    var fileTypeRules: FileTypeRules = FileTypeRules()
+    var customRiskOverrides: [CustomRiskOverride] = []
+    var exclusionPatterns: [String] = []
+    var scheduledCleanup: ScheduledCleanup? = nil
+
     enum CodingKeys: String, CodingKey {
         case autoCleanLowRisk
         case confirmMediumRisk
@@ -71,6 +77,10 @@ struct CleanupRules: Codable {
         case includeLocations
         case excludeLocations
         case appCachesToClean
+        case fileTypeRules
+        case customRiskOverrides
+        case exclusionPatterns
+        case scheduledCleanup
     }
 
     static func load() -> CleanupRules {
@@ -114,6 +124,26 @@ struct CleanupRules: Codable {
             rules.appCachesToClean = savedAppCaches
         }
 
+        // Load advanced rules
+        if let fileTypeRulesData = defaults.data(forKey: "fileTypeRules"),
+           let decoded = try? JSONDecoder().decode(FileTypeRules.self, from: fileTypeRulesData) {
+            rules.fileTypeRules = decoded
+        }
+
+        if let customOverridesData = defaults.data(forKey: "customRiskOverrides"),
+           let decoded = try? JSONDecoder().decode([CustomRiskOverride].self, from: customOverridesData) {
+            rules.customRiskOverrides = decoded
+        }
+
+        if let exclusionPatterns = defaults.stringArray(forKey: "exclusionPatterns") {
+            rules.exclusionPatterns = exclusionPatterns
+        }
+
+        if let scheduledCleanupData = defaults.data(forKey: "scheduledCleanup"),
+           let decoded = try? JSONDecoder().decode(ScheduledCleanup.self, from: scheduledCleanupData) {
+            rules.scheduledCleanup = decoded
+        }
+
         return rules
     }
 
@@ -129,6 +159,21 @@ struct CleanupRules: Codable {
         defaults.set(includeLocations, forKey: "includeLocations")
         defaults.set(excludeLocations, forKey: "excludeLocations")
         defaults.set(appCachesToClean, forKey: "appCachesToClean")
+        defaults.set(exclusionPatterns, forKey: "exclusionPatterns")
+
+        // Save advanced rules as JSON data
+        if let fileTypeRulesData = try? JSONEncoder().encode(fileTypeRules) {
+            defaults.set(fileTypeRulesData, forKey: "fileTypeRules")
+        }
+
+        if let customOverridesData = try? JSONEncoder().encode(customRiskOverrides) {
+            defaults.set(customOverridesData, forKey: "customRiskOverrides")
+        }
+
+        if let scheduledCleanup = scheduledCleanup,
+           let scheduledData = try? JSONEncoder().encode(scheduledCleanup) {
+            defaults.set(scheduledData, forKey: "scheduledCleanup")
+        }
     }
 
     func shouldIncludeFile(at path: String) -> Bool {
@@ -139,15 +184,24 @@ struct CleanupRules: Codable {
             }
         }
 
+        // Check exclusion patterns
+        if matchesExclusionPattern(path) {
+            return false
+        }
+
         // Check if in include locations
         for include in includeLocations {
             if path.hasPrefix(include) {
-                return true
+                return isFileTypeAllowed(path)
             }
         }
 
         // Default: include files from home directory (user files)
-        return path.hasPrefix(NSHomeDirectory())
+        if path.hasPrefix(NSHomeDirectory()) {
+            return isFileTypeAllowed(path)
+        }
+
+        return false
     }
 
     func isAppCache(_ path: String) -> Bool {
@@ -157,5 +211,85 @@ struct CleanupRules: Codable {
             }
         }
         return false
+    }
+
+    // Check if file matches any exclusion pattern
+    func matchesExclusionPattern(_ path: String) -> Bool {
+        for pattern in exclusionPatterns {
+            if let regex = try? NSRegularExpression(pattern: pattern) {
+                let range = NSRange(location: 0, length: path.utf16.count)
+                if regex.firstMatch(in: path, options: [], range: range) != nil {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    // Get custom risk override for a path
+    func getCustomRiskOverride(for path: String) -> RiskLevel? {
+        for override in customRiskOverrides {
+            if path.hasPrefix(override.path) {
+                return override.riskLevel
+            }
+        }
+        return nil
+    }
+
+    // Check if file type is allowed
+    func isFileTypeAllowed(_ path: String) -> Bool {
+        let fileExtension = (path as NSString).pathExtension.lowercased()
+
+        // Check blacklist
+        if fileTypeRules.blacklistedExtensions.contains(fileExtension) {
+            return false
+        }
+
+        // Check whitelist (if not empty, only allow listed extensions)
+        if !fileTypeRules.whitelistedExtensions.isEmpty {
+            return fileTypeRules.whitelistedExtensions.contains(fileExtension)
+        }
+
+        return true
+    }
+}
+
+// MARK: - Advanced Rule Structures
+
+struct FileTypeRules: Codable {
+    var whitelistedExtensions: [String] = [] // Empty means all allowed
+    var blacklistedExtensions: [String] = [".app", ".dmg", ".pkg", ".kext", ".component"]
+
+    static let `default` = FileTypeRules()
+}
+
+struct CustomRiskOverride: Codable, Identifiable {
+    let id = UUID()
+    var path: String
+    var riskLevel: RiskLevel
+
+    enum CodingKeys: String, CodingKey {
+        case path, riskLevel
+    }
+}
+
+struct ScheduledCleanup: Codable {
+    var enabled: Bool = false
+    var frequency: CleanupFrequency = .weekly
+    var timeOfDay: Date = Calendar.current.date(bySettingHour: 2, minute: 0, second: 0, of: Date()) ?? Date() // 2 AM
+    var lastRun: Date?
+
+    enum CleanupFrequency: String, Codable, CaseIterable {
+        case daily = "Daily"
+        case weekly = "Weekly"
+        case monthly = "Monthly"
+
+        var timeInterval: TimeInterval {
+            switch self {
+            case .daily: return 86400 // 24 hours
+            case .weekly: return 604800 // 7 days
+            case .monthly: return 2592000 // 30 days
+            }
+        }
     }
 }

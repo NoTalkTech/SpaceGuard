@@ -19,6 +19,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var settingsWindow: NSWindow?
     private var diskStats: DiskStats?
     @MainActor private var progressTracker = ProgressTracker()
+    private let filePreviewer = FilePreviewer()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupStatusBar()
@@ -29,6 +30,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Update disk info periodically (every 5 minutes)
         Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
             self?.updateDiskInfo()
+        }
+
+        // Setup confirmation callback for medium/high risk files
+        progressTracker.confirmDeletion = { [weak self] file in
+            guard let self = self else { return false }
+            return await self.showFilePreview(for: file)
         }
     }
 
@@ -150,6 +157,43 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func quitApp() {
         NSApplication.shared.terminate(nil)
+    }
+
+    @MainActor
+    func showFilePreview(for file: FileItem) async -> Bool {
+        return await withCheckedContinuation { continuation in
+            let previewInfo = filePreviewer.getPreviewInfo(for: file)
+
+            // Create a window to host the SwiftUI view
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 620, height: 740),
+                styleMask: [.titled, .closable],
+                backing: .buffered,
+                defer: false
+            )
+            window.center()
+            window.title = "Confirm Deletion: \(file.name)"
+            window.isReleasedWhenClosed = false
+            window.level = .modalPanel
+
+            // Create the SwiftUI view with callbacks that close the window
+            let previewView = FilePreviewView(
+                fileItem: file,
+                previewInfo: previewInfo,
+                isPresented: .constant(true),
+                onConfirm: {
+                    window.close()
+                    continuation.resume(returning: true)
+                },
+                onCancel: {
+                    window.close()
+                    continuation.resume(returning: false)
+                }
+            )
+
+            window.contentView = NSHostingView(rootView: previewView)
+            window.makeKeyAndOrderFront(nil)
+        }
     }
 
     func showNotification(title: String, message: String) {

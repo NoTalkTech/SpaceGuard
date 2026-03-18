@@ -3,9 +3,9 @@ import Foundation
 class RiskAnalyzer {
     private let fileManager = FileManager.default
 
-    func analyzeFiles(_ files: [FileItem]) -> [FileItem] {
+    func analyzeFiles(_ files: [FileItem], rules: CleanupRules? = nil) -> [FileItem] {
         files.map { file in
-            let riskLevel = classifyRisk(for: file.url)
+            let riskLevel = classifyRisk(for: file.url, rules: rules)
             let reason = getRiskReason(for: file.url, riskLevel: riskLevel)
 
             return FileItem(
@@ -19,8 +19,13 @@ class RiskAnalyzer {
         }
     }
 
-    func classifyRisk(for url: URL) -> RiskLevel {
+    func classifyRisk(for url: URL, rules: CleanupRules? = nil) -> RiskLevel {
         let path = url.path
+
+        // Check custom risk override first
+        if let rules = rules, let customRisk = rules.getCustomRiskOverride(for: path) {
+            return customRisk
+        }
 
         // High risk: System files and critical user data
         if isSystemFile(path) || isApplicationBundle(path) || isCriticalUserFile(path) {

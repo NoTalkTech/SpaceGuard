@@ -34,10 +34,10 @@ echo "DMG: $DMG_NAME"
 rm -rf "$TEMP_DIR"
 rm -f "$PROJECT_DIR/$DMG_NAME"
 
-# Build if needed
+# Build if needed (Universal Binary)
 if [ ! -f "$PROJECT_DIR/.build/release/$APP_NAME" ]; then
-    echo "Building release version..."
-    swift build --configuration release
+    echo "Building release version (Universal Binary for arm64/x86_64)..."
+    swift build --configuration release --arch arm64 --arch x86_64
 fi
 
 # Create .app bundle if needed
@@ -45,6 +45,10 @@ if [ ! -d "$PROJECT_DIR/$APP_NAME.app" ]; then
     echo "Creating application bundle..."
     ./scripts/create-app-bundle.sh
 fi
+
+# Sign the application bundle (ad-hoc signing)
+echo "Signing application bundle..."
+./scripts/sign.sh
 
 # Create temporary directory structure
 echo "Creating DMG layout..."

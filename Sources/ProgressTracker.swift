@@ -14,6 +14,8 @@ class ProgressTracker: ObservableObject {
     private var scanner: DiskScanner?
     private var cleanupEngine: CleanupEngine?
 
+    var confirmDeletion: ((FileItem) async -> Bool)? = nil
+
     func startScan(path: String = NSHomeDirectory()) async -> DiskScanner.ScanResult? {
         guard !isScanning else { return nil }
 
@@ -70,7 +72,7 @@ class ProgressTracker: ObservableObject {
 
         cleanupEngine = CleanupEngine()
 
-        let result = await cleanupEngine!.cleanupFiles(files, rules: rules) { [weak self] processed, total, freed in
+        let result = await cleanupEngine!.cleanupFiles(files, rules: rules, progress: { [weak self] processed, total, freed in
             guard let self = self else { return }
 
             Task { @MainActor in
@@ -80,7 +82,7 @@ class ProgressTracker: ObservableObject {
                 self.currentProgress = Double(processed) / Double(max(total, 1))
                 self.currentStatus = "Cleaned \(processed)/\(total) files, freed \(ByteCountFormatter.string(fromByteCount: freed, countStyle: .file))"
             }
-        }
+        }, confirmAction: confirmDeletion)
 
         isCleaning = false
         currentStatus = "Cleanup complete: \(result.filesDeleted) files deleted, \(ByteCountFormatter.string(fromByteCount: result.spaceFreed, countStyle: .file)) freed"
@@ -106,7 +108,7 @@ class ProgressTracker: ObservableObject {
 
         cleanupEngine = CleanupEngine()
 
-        let result = await cleanupEngine!.quickCleanup(rules: rules) { [weak self] processed, total, freed in
+        let result = await cleanupEngine!.quickCleanup(rules: rules, progress: { [weak self] processed, total, freed in
             guard let self = self else { return }
 
             Task { @MainActor in
@@ -116,7 +118,7 @@ class ProgressTracker: ObservableObject {
                 self.currentProgress = Double(processed) / Double(max(total, 1))
                 self.currentStatus = "Cleaned \(processed)/\(total) files, freed \(ByteCountFormatter.string(fromByteCount: freed, countStyle: .file))"
             }
-        }
+        }, confirmAction: confirmDeletion)
 
         isCleaning = false
         currentStatus = "Quick cleanup complete: \(result.filesDeleted) files deleted, \(ByteCountFormatter.string(fromByteCount: result.spaceFreed, countStyle: .file)) freed"

@@ -6,10 +6,20 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-BUILD_DIR="$PROJECT_DIR/.build/release"
-RESOURCES_DIR="$PROJECT_DIR/Sources/Resources"
 APP_NAME="SpaceGuard"
 APP_BUNDLE="$PROJECT_DIR/$APP_NAME.app"
+RESOURCES_DIR="$PROJECT_DIR/Sources/Resources"
+
+# Determine build directory (universal binary may be in different location)
+if [ -f "$PROJECT_DIR/.build/apple/Products/Release/$APP_NAME" ]; then
+    BUILD_DIR="$PROJECT_DIR/.build/apple/Products/Release"
+elif [ -f "$PROJECT_DIR/.build/release/$APP_NAME" ]; then
+    BUILD_DIR="$PROJECT_DIR/.build/release"
+else
+    echo "Error: $APP_NAME executable not found"
+    echo "Please build the project first: swift build --configuration release"
+    exit 1
+fi
 
 echo "Creating $APP_NAME.app bundle..."
 

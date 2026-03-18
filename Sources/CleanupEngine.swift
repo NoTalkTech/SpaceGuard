@@ -17,7 +17,12 @@ class CleanupEngine {
         let error: Swift.Error
     }
 
-    func cleanupFiles(_ files: [FileItem], rules: CleanupRules, progress: @escaping (Int, Int, Int64) -> Void) async -> CleanupResult {
+    func cleanupFiles(
+        _ files: [FileItem],
+        rules: CleanupRules,
+        progress: @escaping (Int, Int, Int64) -> Void,
+        confirmAction: ((FileItem) async -> Bool)? = nil
+    ) async -> CleanupResult {
         guard !isCleaning else {
             return CleanupResult(filesDeleted: 0, spaceFreed: 0, duration: 0, errors: [])
         }
@@ -42,9 +47,25 @@ class CleanupEngine {
                 break
             }
 
-            // Check rules
-            if !shouldDeleteFile(file, rules: rules) {
+            // Check rules and get deletion decision
+            let deletionDecision = shouldDeleteFile(file, rules: rules)
+
+            switch deletionDecision {
+            case .skip:
                 continue
+            case .confirm:
+                // Ask for confirmation if callback provided
+                if let confirmAction = confirmAction {
+                    let shouldDelete = await confirmAction(file)
+                    if !shouldDelete {
+                        continue
+                    }
+                } else {
+                    // No confirmation callback, skip the file
+                    continue
+                }
+            case .delete:
+                break // Proceed with deletion
             }
 
             do {
@@ -72,15 +93,21 @@ class CleanupEngine {
         )
     }
 
-    private func shouldDeleteFile(_ file: FileItem, rules: CleanupRules) -> Bool {
+    enum DeletionDecision {
+        case skip
+        case confirm
+        case delete
+    }
+
+    private func shouldDeleteFile(_ file: FileItem, rules: CleanupRules) -> DeletionDecision {
         // Check risk level rules
         switch file.riskLevel {
         case .high:
-            return !rules.neverDeleteHighRisk
+            return rules.neverDeleteHighRisk ? .skip : .confirm
         case .medium:
-            return rules.confirmMediumRisk
+            return rules.confirmMediumRisk ? .confirm : .skip
         case .low:
-            return rules.autoCleanLowRisk
+            return rules.autoCleanLowRisk ? .delete : .skip
         }
     }
 
@@ -137,7 +164,7 @@ class CleanupEngine {
         return (lowRiskSavings, mediumRiskSavings, highRiskSavings)
     }
 
-    func quickCleanup(rules: CleanupRules, progress: @escaping (Int, Int, Int64) -> Void) async -> CleanupResult {
+    func quickCleanup(rules: CleanupRules, progress: @escaping (Int, Int, Int64) -> Void, confirmAction: ((FileItem) async -> Bool)? = nil) async -> CleanupResult {
         // Identify common cache locations
         let cachePaths = [
             NSHomeDirectory() + "/Library/Caches",
@@ -157,7 +184,7 @@ class CleanupEngine {
             do {
                 let result = try await scanner.scanDirectory(at: path) { _, _ in }
                 let analyzer = RiskAnalyzer()
-                let analyzedFiles = analyzer.analyzeFiles(result.files)
+                let analyzedFiles = analyzer.analyzeFiles(result.files, rules: rules)
                 allFiles.append(contentsOf: analyzedFiles)
             } catch {
                 print("Error scanning \(path): \(error)")
@@ -167,6 +194,6 @@ class CleanupEngine {
         // Filter for low-risk files only
         let lowRiskFiles = allFiles.filter { $0.riskLevel == .low }
 
-        return await cleanupFiles(lowRiskFiles, rules: rules, progress: progress)
+        return await cleanupFiles(lowRiskFiles, rules: rules, progress: progress, confirmAction: confirmAction)
     }
 }

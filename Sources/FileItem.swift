@@ -1,6 +1,6 @@
 import Foundation
 
-enum RiskLevel: String, CaseIterable {
+enum RiskLevel: String, CaseIterable, Codable {
     case low = "Low"
     case medium = "Medium"
     case high = "High"

@@ -18,7 +18,7 @@ let package = Package(
             dependencies: [],
             path: "Sources",
             resources: [
-                .process("Resources")
+                .copy("Resources")
             ],
             swiftSettings: [
                 .enableUpcomingFeature("BareSlashRegexLiterals")
