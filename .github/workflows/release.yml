@@ -137,8 +137,10 @@ jobs:
 
             ### Source Code
             Full source available at: https://github.com/${{ github.repository }}
-          draft: ${{ github.event_name == 'push' && github.ref_name == 'main' }}
+          draft: false
           prerelease: ${{ github.event_name == 'push' && github.ref_name == 'main' }}
+          generate_release_notes: false
+          make_latest: false
           files: |
             ${{ env.DMG_NAME }}
             SpaceGuard.app/Contents/Info.plist
