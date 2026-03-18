@@ -7,7 +7,20 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 APP_NAME="SpaceGuard"
-VERSION="1.0.0"
+
+# Get version from command line argument or environment variable
+if [ -n "$1" ]; then
+    VERSION="$1"
+elif [ -n "${VERSION}" ]; then
+    # Use environment variable if set
+    VERSION="${VERSION}"
+else
+    VERSION="1.0.0"
+fi
+
+# Remove 'v' prefix if present (e.g., v1.0.0 -> 1.0.0)
+VERSION="${VERSION#v}"
+
 DMG_NAME="${APP_NAME}-${VERSION}.dmg"
 VOLUME_NAME="${APP_NAME} ${VERSION}"
 TEMP_DIR="/tmp/${APP_NAME}-dmg"

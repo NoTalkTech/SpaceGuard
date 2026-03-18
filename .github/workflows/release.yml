@@ -1,0 +1,105 @@
+name: Create Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # Trigger on version tags like v1.0.0, v1.1.0, etc.
+  workflow_dispatch:  # Allow manual triggering
+    inputs:
+      version:
+        description: 'Version number (e.g., 1.0.0)'
+        required: true
+        default: '1.0.0'
+
+jobs:
+  build-and-release:
+    runs-on: macos-latest
+    permissions:
+      contents: write  # Needed to create releases
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Swift
+        uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: '5.9'
+
+      - name: Build Release
+        run: |
+          swift build --configuration release
+          echo "Build completed successfully"
+
+      - name: Make scripts executable
+        run: |
+          chmod +x scripts/*.sh
+          ls -la scripts/
+
+      - name: Create App Bundle
+        run: ./scripts/create-app-bundle.sh
+
+      - name: Create DMG
+        run: |
+          # Determine version from tag or input
+          if [[ -n "${{ github.ref }}" && "${{ github.ref }}" == refs/tags/* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            VERSION="${{ github.event.inputs.version }}"
+          fi
+
+          # Update version in make-dmg.sh if needed
+          sed -i.bak "s/VERSION=\"1.0.0\"/VERSION=\"$VERSION\"/" scripts/make-dmg.sh
+          ./scripts/make-dmg.sh
+
+          # Restore original file
+          mv scripts/make-dmg.sh.bak scripts/make-dmg.sh
+
+          DMG_NAME="SpaceGuard-$VERSION.dmg"
+          echo "DMG_NAME=$DMG_NAME" >> $GITHUB_ENV
+          echo "Created DMG: $DMG_NAME"
+
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: SpaceGuard ${{ github.ref_name }}
+          body: |
+            ## SpaceGuard ${{ github.ref_name }}
+
+            ### What's New
+            - Automated release build
+            - DMG installer included
+
+            ### Installation
+            1. Download the DMG file
+            2. Double-click to mount
+            3. Drag SpaceGuard.app to Applications folder
+            4. Launch from Applications or Spotlight
+
+            ### Build Information
+            - Built on: ${{ github.event.head_commit.timestamp }}
+            - Commit: ${{ github.sha }}
+            - Workflow: ${{ github.workflow }}
+
+            ### Source Code
+            Full source available at: https://github.com/${{ github.repository }}
+          draft: false
+          prerelease: false
+          files: |
+            ${{ env.DMG_NAME }}
+            SpaceGuard.app/Contents/Info.plist
+
+      - name: Upload DMG to Release
+        if: steps.create_release.outputs.id != ''
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./${{ env.DMG_NAME }}
+          asset_name: ${{ env.DMG_NAME }}
+          asset_content_type: application/octet-stream
