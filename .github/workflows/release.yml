@@ -72,11 +72,20 @@ jobs:
 
       - name: Create DMG
         run: |
-          # Determine version from tag or input
+          # Determine version from tag, input, or commit SHA
           if [[ -n "${{ github.ref }}" && "${{ github.ref }}" == refs/tags/* ]]; then
+            # Tag push: extract version from tag name (remove 'v' prefix)
             VERSION="${GITHUB_REF#refs/tags/v}"
-          else
+            TAG_NAME="${{ github.ref_name }}"
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            # Manual trigger: use input version
             VERSION="${{ github.event.inputs.version }}"
+            TAG_NAME="v$VERSION"
+          else
+            # Branch push: use commit SHA for version and tag
+            SHORT_SHA="${GITHUB_SHA:0:7}"
+            VERSION="dev-$SHORT_SHA"
+            TAG_NAME="dev-$SHORT_SHA"
           fi
 
           # Update version in make-dmg.sh if needed
@@ -90,7 +99,9 @@ jobs:
 
           DMG_NAME="SpaceGuard-$VERSION.dmg"
           echo "DMG_NAME=$DMG_NAME" >> $GITHUB_ENV
-          echo "Created DMG: $DMG_NAME"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "TAG_NAME=$TAG_NAME" >> $GITHUB_ENV
+          echo "Created DMG: $DMG_NAME (Version: $VERSION, Tag: $TAG_NAME)"
 
       - name: Create Release
         id: create_release
@@ -98,14 +109,20 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ github.ref_name }}
-          name: SpaceGuard ${{ github.ref_name }}
+          tag_name: ${{ env.TAG_NAME }}
+          name: SpaceGuard ${{ env.VERSION }}
           body: |
-            ## SpaceGuard ${{ github.ref_name }}
+            ## SpaceGuard ${{ env.VERSION }}
+
+            ### Source
+            - Triggered by: ${{ github.event_name }}
+            - ${{ github.event_name == 'push' && 'Branch' || 'Tag' }}: ${{ github.ref_name }}
+            - Commit: ${{ github.sha }}
 
             ### What's New
             - Automated release build
             - DMG installer included
+            - Universal binary (arm64 + x86_64)
 
             ### Installation
             1. Download the DMG file
@@ -115,13 +132,13 @@ jobs:
 
             ### Build Information
             - Built on: ${{ github.event.head_commit.timestamp }}
-            - Commit: ${{ github.sha }}
             - Workflow: ${{ github.workflow }}
+            - Swift version: 6.0
 
             ### Source Code
             Full source available at: https://github.com/${{ github.repository }}
-          draft: false
-          prerelease: false
+          draft: ${{ github.event_name == 'push' && github.ref_name == 'main' }}
+          prerelease: ${{ github.event_name == 'push' && github.ref_name == 'main' }}
           files: |
             ${{ env.DMG_NAME }}
             SpaceGuard.app/Contents/Info.plist
