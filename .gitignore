@@ -40,7 +40,7 @@ Packages/
 
 # App specific
 SpaceGuard.app/
-SpaceGuard.dmg
+*.dmg
 SpaceGuard.zip
 
 # Temporary files

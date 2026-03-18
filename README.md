@@ -17,12 +17,17 @@ A macOS status bar application for disk space management with risk-based file cl
 ## Installation
 
 ### DMG Installer
-Download the latest `.dmg` from [Releases](https://github.com/h417652303/SpaceGuard/releases) and drag to Applications.
+Download the latest `.dmg` from [Releases](https://github.com/NoTalkTech/SpaceGuard/releases) and drag to Applications.
+
+Or create your own DMG using the included scripts:
+```bash
+./scripts/make-dmg.sh
+```
 
 ### Build from Source
 ```bash
 # Clone the repository
-git clone https://github.com/h417652303/SpaceGuard.git
+git clone https://github.com/NoTalkTech/SpaceGuard.git
 cd SpaceGuard
 
 # Open in Xcode
@@ -30,6 +35,23 @@ open SpaceGuard.xcodeproj
 
 # Build and run
 ```
+
+### Installation Scripts
+
+For easy installation and distribution, the project includes helper scripts:
+
+```bash
+# Create .app bundle
+./scripts/create-app-bundle.sh
+
+# Install to Applications (interactive)
+./scripts/install.sh
+
+# Create DMG for distribution
+./scripts/make-dmg.sh
+```
+
+These scripts use only macOS built-in tools (no external dependencies).
 
 ## Usage
 
@@ -76,6 +98,11 @@ SpaceGuard/
 │   ├── DiskScanner/          # File system scanning
 │   ├── RiskAnalyzer/         # Risk classification
 │   └── Models/              # Data models
+├── scripts/                  # Helper scripts for distribution
+│   ├── create-app-bundle.sh
+│   ├── install.sh
+│   ├── make-dmg.sh
+│   └── IconGenerator.swift
 ├── Tests/
 └── Package.swift
 ```
@@ -91,6 +118,17 @@ swift test
 # Create Xcode project
 swift package generate-xcodeproj
 ```
+
+### Scripts
+
+The `scripts/` directory contains helper scripts for distribution:
+
+- `create-app-bundle.sh` - Creates `.app` bundle from SwiftPM build
+- `install.sh` - Interactive installation to `/Applications`
+- `make-dmg.sh` - Creates DMG for distribution
+- `IconGenerator.swift` - Generates app icons (run with `--generate`)
+
+All scripts use only macOS built-in tools and require no external dependencies.
 
 ## Contributing
 
