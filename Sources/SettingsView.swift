@@ -68,39 +68,46 @@ struct SettingsView: View {
     private var generalSettings: some View {
         Form {
             Section("Risk Management") {
-                Toggle("Auto-clean low risk files", isOn: $rules.autoCleanLowRisk)
-                    .help("Automatically delete files classified as low risk")
+                VStack(alignment: .leading, spacing: 12) {
+                    Toggle("Auto-clean low risk files", isOn: $rules.autoCleanLowRisk)
+                        .help("Automatically delete files classified as low risk")
 
-                Toggle("Confirm medium risk files", isOn: $rules.confirmMediumRisk)
-                    .help("Ask for confirmation before deleting medium risk files")
+                    Toggle("Confirm medium risk files", isOn: $rules.confirmMediumRisk)
+                        .help("Ask for confirmation before deleting medium risk files")
 
-                Toggle("Never delete high risk files", isOn: $rules.neverDeleteHighRisk)
-                    .help("Prevent deletion of high risk files")
+                    Toggle("Never delete high risk files", isOn: $rules.neverDeleteHighRisk)
+                        .help("Prevent deletion of high risk files")
+                }
             }
 
             Section("Age Rules") {
-                Stepper("Delete downloads older than \(rules.deleteDownloadsOlderThanDays) days",
-                       value: $rules.deleteDownloadsOlderThanDays,
-                       in: 1...365)
+                VStack(alignment: .leading, spacing: 12) {
+                    Stepper("Delete downloads older than \(rules.deleteDownloadsOlderThanDays) days",
+                           value: $rules.deleteDownloadsOlderThanDays,
+                           in: 1...365)
 
-                Stepper("Delete logs older than \(rules.deleteLogsOlderThanDays) days",
-                       value: $rules.deleteLogsOlderThanDays,
-                       in: 1...90)
+                    Stepper("Delete logs older than \(rules.deleteLogsOlderThanDays) days",
+                           value: $rules.deleteLogsOlderThanDays,
+                           in: 1...90)
 
-                Stepper("Delete cache older than \(rules.deleteCacheOlderThanDays) days",
-                       value: $rules.deleteCacheOlderThanDays,
-                       in: 1...30)
+                    Stepper("Delete cache older than \(rules.deleteCacheOlderThanDays) days",
+                           value: $rules.deleteCacheOlderThanDays,
+                           in: 1...30)
+                }
             }
 
             Section {
-                Button("Save Settings") {
-                    rules.save()
-                }
-                .buttonStyle(.borderedProminent)
+                VStack(alignment: .leading, spacing: 12) {
+                    Button("Save Settings") {
+                        rules.save()
+                    }
+                    .buttonStyle(.borderedProminent)
 
-                Button("Reset to Defaults") {
-                    rules = CleanupRules()
-                    rules.save()
+                    Button("Reset to Defaults") {
+                        rules = CleanupRules()
+                        rules.save()
+                    }
+                    .buttonStyle(.bordered)
                 }
             }
         }
@@ -116,6 +123,7 @@ struct SettingsView: View {
                     }
                 }
                 .disabled(progressTracker.isScanning)
+                .buttonStyle(.borderedProminent)
 
                 Button("Quick Cleanup") {
                     Task {
@@ -123,6 +131,7 @@ struct SettingsView: View {
                     }
                 }
                 .disabled(progressTracker.isCleaning)
+                .buttonStyle(.borderedProminent)
 
                 if progressTracker.isScanning || progressTracker.isCleaning {
                     ProgressView(value: progressTracker.currentProgress) {
@@ -136,12 +145,13 @@ struct SettingsView: View {
                             progressTracker.cancelCleanup()
                         }
                     }
+                    .buttonStyle(.bordered)
                 }
             }
 
             Section("Statistics") {
                 if let stats = diskStats {
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 12) {
                         Text("Disk Usage: \(stats.formattedUsed) of \(stats.formattedTotal)")
                             .font(.headline)
 
@@ -163,6 +173,7 @@ struct SettingsView: View {
                 Button("Refresh Disk Info") {
                     loadDiskStats()
                 }
+                .buttonStyle(.bordered)
             }
         }
         .padding()
@@ -174,18 +185,21 @@ struct SettingsView: View {
                 List(rules.includeLocations, id: \.self) { location in
                     Text(location)
                 }
+                .listStyle(.insetGrouped)
             }
 
             Section("Excluded Locations") {
                 List(rules.excludeLocations, id: \.self) { location in
                     Text(location)
                 }
+                .listStyle(.insetGrouped)
             }
 
             Section("App Caches to Clean") {
                 List(rules.appCachesToClean, id: \.self) { app in
                     Text(app)
                 }
+                .listStyle(.insetGrouped)
             }
         }
         .padding()
@@ -221,6 +235,7 @@ struct SettingsView: View {
                 Button("Add Custom Override") {
                     showAddOverride = true
                 }
+                .buttonStyle(.bordered)
             }
 
             Section("Exclusion Patterns") {
@@ -231,11 +246,12 @@ struct SettingsView: View {
                 Button("Add Exclusion Pattern") {
                     showAddPattern = true
                 }
+                .buttonStyle(.bordered)
             }
 
             Section("Scheduled Cleanup") {
                 if let schedule = rules.scheduledCleanup {
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 12) {
                         Toggle("Enable scheduled cleanup", isOn: .constant(schedule.enabled))
 
                         if schedule.enabled {
@@ -254,6 +270,7 @@ struct SettingsView: View {
                 Button("Configure Schedule") {
                     showConfigureSchedule = true
                 }
+                .buttonStyle(.bordered)
             }
         }
         .padding()
