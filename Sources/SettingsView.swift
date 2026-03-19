@@ -185,21 +185,21 @@ struct SettingsView: View {
                 List(rules.includeLocations, id: \.self) { location in
                     Text(location)
                 }
-                .listStyle(.insetGrouped)
+                .listStyle(.bordered)
             }
 
             Section("Excluded Locations") {
                 List(rules.excludeLocations, id: \.self) { location in
                     Text(location)
                 }
-                .listStyle(.insetGrouped)
+                .listStyle(.bordered)
             }
 
             Section("App Caches to Clean") {
                 List(rules.appCachesToClean, id: \.self) { app in
                     Text(app)
                 }
-                .listStyle(.insetGrouped)
+                .listStyle(.bordered)
             }
         }
         .padding()
