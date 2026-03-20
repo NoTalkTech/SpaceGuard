@@ -8,7 +8,8 @@ struct FilePreviewView: View {
     var onConfirm: () -> Void
     var onCancel: () -> Void
 
-    @State private var showingQuickLook = false
+    @State private var previewError: String?
+    @State private var isLoadingPreview = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -36,6 +37,8 @@ struct FilePreviewView: View {
                         .foregroundColor(.secondary)
                 }
                 .buttonStyle(.plain)
+                .help("Close dialog")
+                .accessibilityLabel("Close")
             }
             .padding()
             .background(Color(NSColor.windowBackgroundColor))
@@ -108,25 +111,48 @@ struct FilePreviewView: View {
                     // QuickLook Button
                     if previewInfo.canQuickLook {
                         GroupBox {
-                            Button(action: { showingQuickLook = true }) {
+                            Button(action: {
+                                previewError = nil
+                                let previewer = FilePreviewer()
+                                previewer.showQuickLookPreview(for: fileItem.url)
+                                // Check if QuickLook panel actually appeared
+                                // We could add a timer to check, but for now just log
+                            }) {
                                 HStack {
                                     Image(systemName: "eye.fill")
                                     Text("Preview with QuickLook")
                                 }
                                 .frame(maxWidth: .infinity)
                             }
+                            .help("Open this file in macOS QuickLook preview")
                         }
                     }
 
                     // Warning
                     GroupBox {
                         VStack(alignment: .leading, spacing: 8) {
-                            Label("This file is classified as Medium Risk", systemImage: "exclamationmark.triangle.fill")
-                                .foregroundColor(.orange)
+                            Label("This file is classified as \(fileItem.riskLevel.rawValue) Risk", systemImage: "exclamationmark.triangle.fill")
+                                .foregroundColor(riskColor)
+                                .accessibilityLabel("Risk warning: \(fileItem.riskLevel.rawValue) risk file")
 
                             Text("Are you sure you want to delete this file? This action cannot be undone.")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
+                        }
+                    }
+
+                    // Error display
+                    if let error = previewError {
+                        GroupBox {
+                            HStack {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundColor(.red)
+                                Text("Preview error: \(error)")
+                                    .font(.caption)
+                                    .foregroundColor(.red)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(4)
                         }
                     }
                 }
@@ -139,6 +165,7 @@ struct FilePreviewView: View {
             HStack {
                 Button("Cancel", action: onCancel)
                     .keyboardShortcut(.escape)
+                    .help("Cancel and close this dialog")
 
                 Spacer()
 
@@ -146,19 +173,13 @@ struct FilePreviewView: View {
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
                     .tint(.red)
+                    .help("Permanently delete this file")
             }
             .padding()
         }
-        .frame(width: 600, height: 700)
+        .frame(minWidth: 500, idealWidth: 550, maxWidth: 600,
+               minHeight: 400, idealHeight: 500, maxHeight: 700)
         .background(Color(NSColor.windowBackgroundColor))
-        .onAppear {
-            // Show QuickLook if requested
-            if showingQuickLook {
-                let previewer = FilePreviewer()
-                previewer.showQuickLookPreview(for: fileItem.url)
-                showingQuickLook = false
-            }
-        }
     }
 
     private var iconName: String {

@@ -41,7 +41,7 @@ class FilePreviewer {
         let previewText = previewType == .text ? getTextPreview(for: url, maxLines: 10) : nil
 
         // Check if QuickLook can preview this file
-        // Temporarily assume QuickLook can preview most files
+        // FIXME: Proper QuickLook availability check - QLPreviewPanel API unclear
         let canQuickLook = true
 
         return PreviewInfo(
