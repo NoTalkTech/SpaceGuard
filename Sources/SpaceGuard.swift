@@ -24,7 +24,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupStatusBar()
         setupMenu()
-        requestNotificationPermission()
         updateDiskInfo()
 
         // Update disk info periodically (every 5 minutes)
@@ -37,15 +36,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self = self else { return false }
             return await self.showFilePreview(for: file)
         }
+
+        // Request notification permission after a short delay (avoids bundle proxy issue)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            self.requestNotificationPermission()
+        }
     }
 
     func requestNotificationPermission() {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
-            if granted {
-                print("Notification permission granted")
-            } else if let error = error {
-                print("Notification permission error: \(error)")
+        // Only request notification permission if we're running in a proper app bundle
+        // This avoids crashes when running from command line or development environment
+        if Bundle.main.bundleIdentifier != nil {
+            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
+                if granted {
+                    print("Notification permission granted")
+                } else if let error = error {
+                    print("Notification permission error: \(error)")
+                }
             }
+        } else {
+            print("Skipping notification permission request: No bundle identifier")
         }
     }
 

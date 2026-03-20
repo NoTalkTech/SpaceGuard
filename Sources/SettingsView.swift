@@ -463,9 +463,9 @@ private struct AgeRuleInput: View {
     var body: some View {
         HStack {
             Text("\(label)")
-                .frame(width: 200, alignment: .leading)
+                .frame(minWidth: 180, alignment: .leading)
 
-            Spacer()
+            Spacer(minLength: 20)
 
             HStack {
                 TextField("", text: $textValue)
