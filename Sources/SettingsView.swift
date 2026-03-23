@@ -210,68 +210,88 @@ private struct GeneralSettingsView: View {
     let saveRules: () -> Void
 
     var body: some View {
-        Form {
-            Section("Risk Management") {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                // Risk Management Section
                 VStack(alignment: .leading, spacing: 12) {
-                    Toggle("Auto-clean low risk files", isOn: $rules.autoCleanLowRisk)
-                        .help("Automatically delete files classified as low risk")
+                    Text("Risk Management")
+                        .font(.system(size: 15, weight: .semibold))
                         .frame(maxWidth: .infinity, alignment: .leading)
 
-                    Toggle("Confirm medium risk files", isOn: $rules.confirmMediumRisk)
-                        .help("Ask for confirmation before deleting medium risk files")
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 12) {
+                        Toggle("Auto-clean low risk files", isOn: $rules.autoCleanLowRisk)
+                            .help("Automatically delete files classified as low risk")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .toggleStyle(.switch)
 
-                    Toggle("Never delete high risk files", isOn: $rules.neverDeleteHighRisk)
-                        .help("Prevent deletion of high risk files")
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        Toggle("Confirm medium risk files", isOn: $rules.confirmMediumRisk)
+                            .help("Ask for confirmation before deleting medium risk files")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .toggleStyle(.switch)
+
+                        Toggle("Never delete high risk files", isOn: $rules.neverDeleteHighRisk)
+                            .help("Prevent deletion of high risk files")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .toggleStyle(.switch)
+                    }
                 }
-            }
 
-            Section("Age Rules") {
+                Divider()
+
+                // Age Rules Section
                 VStack(alignment: .leading, spacing: 12) {
-                    AgeRuleInput(
-                        label: "Delete downloads older than",
-                        value: $rules.deleteDownloadsOlderThanDays,
-                        range: 1...365,
-                        unit: "days"
-                    )
+                    Text("Age Rules")
+                        .font(.system(size: 15, weight: .semibold))
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
-                    AgeRuleInput(
-                        label: "Delete logs older than",
-                        value: $rules.deleteLogsOlderThanDays,
-                        range: 1...90,
-                        unit: "days"
-                    )
+                    VStack(alignment: .leading, spacing: 12) {
+                        AgeRuleInput(
+                            label: "Delete downloads older than",
+                            value: $rules.deleteDownloadsOlderThanDays,
+                            range: 1...365,
+                            unit: "days"
+                        )
 
-                    AgeRuleInput(
-                        label: "Delete cache older than",
-                        value: $rules.deleteCacheOlderThanDays,
-                        range: 1...30,
-                        unit: "days"
-                    )
+                        AgeRuleInput(
+                            label: "Delete logs older than",
+                            value: $rules.deleteLogsOlderThanDays,
+                            range: 1...90,
+                            unit: "days"
+                        )
+
+                        AgeRuleInput(
+                            label: "Delete cache older than",
+                            value: $rules.deleteCacheOlderThanDays,
+                            range: 1...30,
+                            unit: "days"
+                        )
+                    }
                 }
-            }
 
-            Section {
+                Divider()
+
+                // Action Buttons
                 VStack(alignment: .leading, spacing: 12) {
-                    Button("Save Settings") {
-                        rules.save()
-                        saveMessage = "Settings saved successfully"
-                        showSaveSuccess = true
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                            showSaveSuccess = false
+                    HStack(spacing: 12) {
+                        Button("Save Settings") {
+                            rules.save()
+                            saveMessage = "Settings saved successfully"
+                            showSaveSuccess = true
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                                showSaveSuccess = false
+                            }
                         }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                        .buttonStyle(.borderedProminent)
 
-                    Button("Reset to Defaults") {
-                        showResetConfirmation = true
+                        Button("Reset to Defaults") {
+                            showResetConfirmation = true
+                        }
+                        .buttonStyle(.bordered)
                     }
-                    .buttonStyle(.bordered)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
+            .padding()
         }
         .alert("Reset Settings", isPresented: $showResetConfirmation) {
             Button("Cancel", role: .cancel) { }
@@ -298,78 +318,89 @@ private struct CleanupSettingsView: View {
     let loadDiskStats: () -> Void
 
     var body: some View {
-        Form {
-            Section("Quick Actions") {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                // Quick Actions Section
                 VStack(alignment: .leading, spacing: 12) {
-                    Button("Scan Disk Now") {
-                        Task {
-                            await progressTracker.startScan()
-                        }
-                    }
-                    .disabled(progressTracker.isScanning)
-                    .buttonStyle(.borderedProminent)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                    Button("Quick Cleanup") {
-                        Task {
-                            await progressTracker.quickCleanup(rules: rules)
-                        }
-                    }
-                    .disabled(progressTracker.isCleaning)
-                    .buttonStyle(.borderedProminent)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                    if progressTracker.isScanning || progressTracker.isCleaning {
-                        ProgressView(value: progressTracker.currentProgress) {
-                            Text(progressTracker.currentStatus)
-                        }
+                    Text("Quick Actions")
+                        .font(.system(size: 15, weight: .semibold))
                         .frame(maxWidth: .infinity, alignment: .leading)
 
-                        Button("Cancel") {
-                            if progressTracker.isScanning {
-                                progressTracker.cancelScan()
-                            } else {
-                                progressTracker.cancelCleanup()
+                    VStack(alignment: .leading, spacing: 12) {
+                        Button("Scan Disk Now") {
+                            Task {
+                                await progressTracker.startScan()
                             }
                         }
-                        .buttonStyle(.bordered)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
-            }
+                        .disabled(progressTracker.isScanning)
+                        .buttonStyle(.borderedProminent)
 
-            Section("Statistics") {
-                VStack(alignment: .leading, spacing: 12) {
-                    if let stats = diskStats {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Disk Usage: \(stats.formattedUsed) of \(stats.formattedTotal)")
-                                .font(.headline)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                        Button("Quick Cleanup") {
+                            Task {
+                                await progressTracker.quickCleanup(rules: rules)
+                            }
+                        }
+                        .disabled(progressTracker.isCleaning)
+                        .buttonStyle(.borderedProminent)
 
-                            ProgressView(value: stats.usedPercentage / 100) {
-                                Text("\(String(format: "%.1f", stats.usedPercentage))% used")
+                        if progressTracker.isScanning || progressTracker.isCleaning {
+                            ProgressView(value: progressTracker.currentProgress) {
+                                Text(progressTracker.currentStatus)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
 
-                            HStack {
-                                Text("Free: \(stats.formattedFree)")
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                Spacer()
-                                Text("Status: \(stats.healthStatus.rawValue)")
-                                    .foregroundColor(colorForHealth(stats.healthStatus))
+                            Button("Cancel") {
+                                if progressTracker.isScanning {
+                                    progressTracker.cancelScan()
+                                } else {
+                                    progressTracker.cancelCleanup()
+                                }
                             }
-                            .font(.caption)
+                            .buttonStyle(.bordered)
                         }
-                        .padding(.vertical, 4)
                     }
+                }
 
-                    Button("Refresh Disk Info") {
-                        loadDiskStats()
+                Divider()
+
+                // Statistics Section
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Statistics")
+                        .font(.system(size: 15, weight: .semibold))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        if let stats = diskStats {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("Disk Usage: \(stats.formattedUsed) of \(stats.formattedTotal)")
+                                    .font(.headline)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                                ProgressView(value: stats.usedPercentage / 100) {
+                                    Text("\(String(format: "%.1f", stats.usedPercentage))% used")
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                                HStack {
+                                    Text("Free: \(stats.formattedFree)")
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                    Spacer()
+                                    Text("Status: \(stats.healthStatus.rawValue)")
+                                        .foregroundColor(colorForHealth(stats.healthStatus))
+                                }
+                                .font(.caption)
+                            }
+                            .padding(.vertical, 4)
+                        }
+
+                        Button("Refresh Disk Info") {
+                            loadDiskStats()
+                        }
+                        .buttonStyle(.bordered)
                     }
-                    .buttonStyle(.bordered)
-                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
+            .padding()
         }
     }
 
@@ -389,41 +420,49 @@ private struct FileTypesSettingsView: View {
     @Binding var showFileTypeRulesEditor: Bool
 
     var body: some View {
-        Form {
-            Section("File Type Rules") {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                // File Type Rules Section
                 VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Toggle("Enable file type filtering", isOn: .constant(!rules.fileTypeRules.whitelistedExtensions.isEmpty))
-                            .help("Only allow specific file extensions to be cleaned")
-                            .disabled(true)
-
-                        Spacer()
-
-                        Button("Edit...") {
-                            showFileTypeRulesEditor = true
-                        }
-                        .buttonStyle(.bordered)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                    if !rules.fileTypeRules.whitelistedExtensions.isEmpty {
-                        Text("Whitelist: \(rules.fileTypeRules.whitelistedExtensions.joined(separator: ", "))")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    } else {
-                        Text("Whitelist: (all file types allowed)")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-
-                    Text("Blacklist: \(rules.fileTypeRules.blacklistedExtensions.joined(separator: ", "))")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                    Text("File Type Rules")
+                        .font(.system(size: 15, weight: .semibold))
                         .frame(maxWidth: .infinity, alignment: .leading)
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Toggle("Enable file type filtering", isOn: .constant(!rules.fileTypeRules.whitelistedExtensions.isEmpty))
+                                .help("Only allow specific file extensions to be cleaned")
+                                .disabled(true)
+
+                            Spacer()
+
+                            Button("Edit...") {
+                                showFileTypeRulesEditor = true
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                        if !rules.fileTypeRules.whitelistedExtensions.isEmpty {
+                            Text("Whitelist: \(rules.fileTypeRules.whitelistedExtensions.joined(separator: ", "))")
+                                .font(.caption)
+                                .foregroundColor(Color(hex: "#86868b"))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        } else {
+                            Text("Whitelist: (all file types allowed)")
+                                .font(.caption)
+                                .foregroundColor(Color(hex: "#86868b"))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+
+                        Text("Blacklist: \(rules.fileTypeRules.blacklistedExtensions.joined(separator: ", "))")
+                            .font(.caption)
+                            .foregroundColor(Color(hex: "#86868b"))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
             }
+            .padding()
         }
     }
 }
@@ -434,44 +473,57 @@ private struct RiskManagementSettingsView: View {
     @Binding var showAddOverride: Bool
 
     var body: some View {
-        Form {
-            Section("Custom Risk Overrides") {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                // Custom Risk Overrides Section
                 VStack(alignment: .leading, spacing: 12) {
-                    if rules.customRiskOverrides.isEmpty {
-                        Text("No custom risk overrides")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    } else {
-                        List {
-                            ForEach(rules.customRiskOverrides) { override in
-                                HStack {
-                                    Text(override.path)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                    Spacer()
-                                    Text(override.riskLevel.rawValue)
-                                        .foregroundColor(.secondary)
+                    Text("Custom Risk Overrides")
+                        .font(.system(size: 15, weight: .semibold))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        if rules.customRiskOverrides.isEmpty {
+                            Text("No custom risk overrides")
+                                .font(.caption)
+                                .foregroundColor(Color(hex: "#86868b"))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        } else {
+                            VStack(alignment: .leading, spacing: 8) {
+                                ForEach(rules.customRiskOverrides) { override in
+                                    HStack {
+                                        Text(override.path)
+                                            .font(.system(size: 13, weight: .regular))
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                        Spacer()
+                                        Text(override.riskLevel.rawValue)
+                                            .font(.system(size: 13, weight: .regular))
+                                            .foregroundColor(Color(hex: "#86868b"))
+                                    }
+                                    .padding(.vertical, 4)
+                                    .padding(.horizontal, 8)
+                                    .background(Color.gray.opacity(0.1))
+                                    .cornerRadius(4)
+                                }
+                                .onDelete { indices in
+                                    rules.customRiskOverrides.remove(atOffsets: indices)
                                 }
                             }
-                            .onDelete { indices in
-                                rules.customRiskOverrides.remove(atOffsets: indices)
+                            .frame(maxHeight: 120)
+                        }
+
+                        HStack {
+                            Button("Add Custom Override") {
+                                showAddOverride = true
                             }
-                        }
-                        .frame(maxHeight: 120)
-                        .listStyle(.bordered)
-                    }
+                            .buttonStyle(.bordered)
 
-                    HStack {
-                        Button("Add Custom Override") {
-                            showAddOverride = true
+                            Spacer()
                         }
-                        .buttonStyle(.bordered)
-
-                        Spacer()
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
+            .padding()
         }
     }
 }
@@ -481,24 +533,31 @@ private struct DiskInfoSettingsView: View {
     @Binding var rules: CleanupRules
 
     var body: some View {
-        Form {
-            EditableListSection(
-                title: "Included Locations",
-                items: $rules.includeLocations,
-                placeholder: "Add location path..."
-            )
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                EditableListSection(
+                    title: "Included Locations",
+                    items: $rules.includeLocations,
+                    placeholder: "Add location path..."
+                )
 
-            EditableListSection(
-                title: "Excluded Locations",
-                items: $rules.excludeLocations,
-                placeholder: "Add excluded path..."
-            )
+                Divider()
 
-            EditableListSection(
-                title: "App Caches to Clean",
-                items: $rules.appCachesToClean,
-                placeholder: "Add app bundle ID..."
-            )
+                EditableListSection(
+                    title: "Excluded Locations",
+                    items: $rules.excludeLocations,
+                    placeholder: "Add excluded path..."
+                )
+
+                Divider()
+
+                EditableListSection(
+                    title: "App Caches to Clean",
+                    items: $rules.appCachesToClean,
+                    placeholder: "Add app bundle ID..."
+                )
+            }
+            .padding()
         }
     }
 }
@@ -510,71 +569,109 @@ private struct AdvancedSettingsView: View {
     @Binding var showConfigureSchedule: Bool
 
     var body: some View {
-        Form {
-            Section("Exclusion Patterns") {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                // Exclusion Patterns Section
                 VStack(alignment: .leading, spacing: 12) {
-                    if rules.exclusionPatterns.isEmpty {
-                        Text("No exclusion patterns")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    } else {
-                        List {
-                            ForEach(rules.exclusionPatterns, id: \.self) { pattern in
-                                Text(pattern)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            .onDelete { indices in
-                                rules.exclusionPatterns.remove(atOffsets: indices)
-                            }
-                        }
-                        .frame(maxHeight: 120)
-                        .listStyle(.bordered)
-                    }
+                    Text("Exclusion Patterns")
+                        .font(.system(size: 15, weight: .semibold))
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
-                    HStack {
-                        Button("Add Exclusion Pattern") {
-                            showAddPattern = true
-                        }
-                        .buttonStyle(.bordered)
-
-                        Spacer()
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
-
-            Section("Scheduled Cleanup") {
-                VStack(alignment: .leading, spacing: 12) {
-                    if let schedule = rules.scheduledCleanup {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Toggle("Enable scheduled cleanup", isOn: .constant(schedule.enabled))
+                    VStack(alignment: .leading, spacing: 12) {
+                        if rules.exclusionPatterns.isEmpty {
+                            Text("No exclusion patterns")
+                                .font(.caption)
+                                .foregroundColor(Color(hex: "#86868b"))
                                 .frame(maxWidth: .infinity, alignment: .leading)
+                        } else {
+                            VStack(alignment: .leading, spacing: 4) {
+                                ForEach(rules.exclusionPatterns, id: \.self) { pattern in
+                                    HStack {
+                                        Text(pattern)
+                                            .font(.system(size: 13, weight: .regular))
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                        Spacer()
+                                        Button(action: {
+                                            if let index = rules.exclusionPatterns.firstIndex(of: pattern) {
+                                                rules.exclusionPatterns.remove(at: index)
+                                            }
+                                        }) {
+                                            Image(systemName: "trash")
+                                                .foregroundColor(.red)
+                                                .font(.system(size: 11))
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                    .padding(.vertical, 6)
+                                    .padding(.horizontal, 8)
+                                    .background(Color.gray.opacity(0.1))
+                                    .cornerRadius(4)
+                                }
+                            }
+                            .frame(maxHeight: 120)
+                        }
 
-                            if schedule.enabled {
-                                Text("Frequency: \(schedule.frequency.rawValue)")
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                Text("Time: \(schedule.timeOfDay, style: .time)")
-                                    .frame(maxWidth: .infinity, alignment: .leading)
+                        HStack {
+                            Button("Add Exclusion Pattern") {
+                                showAddPattern = true
+                            }
+                            .buttonStyle(.bordered)
 
-                                if let lastRun = schedule.lastRun {
-                                    Text("Last run: \(lastRun, style: .date) \(lastRun, style: .time)")
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                } else {
-                                    Text("Never run")
-                                        .frame(maxWidth: .infinity, alignment: .leading)
+                            Spacer()
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+
+                Divider()
+
+                // Scheduled Cleanup Section
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Scheduled Cleanup")
+                        .font(.system(size: 15, weight: .semibold))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        if let schedule = rules.scheduledCleanup {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Toggle("Enable scheduled cleanup", isOn: .constant(schedule.enabled))
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .toggleStyle(.switch)
+
+                                if schedule.enabled {
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        Text("Frequency: \(schedule.frequency.rawValue)")
+                                            .font(.system(size: 13, weight: .regular))
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                        Text("Time: \(schedule.timeOfDay, style: .time)")
+                                            .font(.system(size: 13, weight: .regular))
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                                        if let lastRun = schedule.lastRun {
+                                            Text("Last run: \(lastRun, style: .date) \(lastRun, style: .time)")
+                                                .font(.system(size: 13, weight: .regular))
+                                                .foregroundColor(Color(hex: "#86868b"))
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                        } else {
+                                            Text("Never run")
+                                                .font(.system(size: 13, weight: .regular))
+                                                .foregroundColor(Color(hex: "#86868b"))
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                        }
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    Button("Configure Schedule") {
-                        showConfigureSchedule = true
+                        Button("Configure Schedule") {
+                            showConfigureSchedule = true
+                        }
+                        .buttonStyle(.bordered)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .buttonStyle(.bordered)
-                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
+            .padding()
         }
     }
 }
@@ -590,13 +687,12 @@ private struct AgeRuleInput: View {
     @State private var showingError = false
 
     var body: some View {
-        HStack {
+        HStack(alignment: .center, spacing: 12) {
             Text("\(label)")
-                .frame(minWidth: 180, alignment: .leading)
+                .font(.system(size: 13, weight: .regular))
+                .frame(width: 180, alignment: .leading)
 
-            Spacer(minLength: 20)
-
-            HStack {
+            HStack(spacing: 8) {
                 TextField("", text: $textValue)
                     .frame(width: 60)
                     .textFieldStyle(.roundedBorder)
@@ -625,7 +721,8 @@ private struct AgeRuleInput: View {
                     }
 
                 Text(unit)
-                    .foregroundColor(.secondary)
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundColor(Color(hex: "#86868b"))
 
                 Stepper("", value: $value, in: range)
                     .labelsHidden()
@@ -665,8 +762,12 @@ private struct EditableListSection: View {
     @State private var newItem = ""
 
     var body: some View {
-        Section(title) {
-            VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .font(.system(size: 15, weight: .semibold))
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            VStack(alignment: .leading, spacing: 12) {
                 // Add new item
                 HStack {
                     TextField(placeholder, text: $newItem)
@@ -688,26 +789,40 @@ private struct EditableListSection: View {
                 if items.isEmpty {
                     Text("No items")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(Color(hex: "#86868b"))
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
-                    List {
+                    VStack(alignment: .leading, spacing: 4) {
                         ForEach(items, id: \.self) { item in
-                            Text(item)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .onDelete { indices in
-                            items.remove(atOffsets: indices)
+                            HStack {
+                                Text(item)
+                                    .font(.system(size: 13, weight: .regular))
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                Spacer()
+                                Button(action: {
+                                    if let index = items.firstIndex(of: item) {
+                                        items.remove(at: index)
+                                    }
+                                }) {
+                                    Image(systemName: "trash")
+                                        .foregroundColor(.red)
+                                        .font(.system(size: 11))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .padding(.vertical, 6)
+                            .padding(.horizontal, 8)
+                            .background(Color.gray.opacity(0.1))
+                            .cornerRadius(4)
                         }
                     }
                     .frame(maxHeight: 120)
-                    .listStyle(.bordered)
                 }
 
                 // Info text
-                Text("Swipe left to delete items")
+                Text("Click trash icon to delete items")
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(Color(hex: "#86868b"))
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
