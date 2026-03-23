@@ -18,29 +18,107 @@ struct SettingsView: View {
     // Reset confirmation
     @State private var showResetConfirmation = false
 
-    var body: some View {
-        TabView {
-            generalSettings
-                .tabItem {
-                    Label("General", systemImage: "gear")
-                }
+    // Sidebar selection
+    @State private var selectedTab: SidebarTab = .general
 
-            cleanupSettings
-                .tabItem {
-                    Label("Cleanup", systemImage: "trash")
-                }
+    enum SidebarTab: String, CaseIterable {
+        case general = "General"
+        case cleanup = "Cleanup"
+        case fileTypes = "File Types"
+        case riskManagement = "Risk Management"
+        case diskInfo = "Disk Info"
+        case advanced = "Advanced"
 
-            advancedSettings
-                .tabItem {
-                    Label("Advanced", systemImage: "slider.horizontal.3")
-                }
-
-            diskInfoView
-                .tabItem {
-                    Label("Disk Info", systemImage: "internaldrive")
-                }
+        var icon: String {
+            switch self {
+            case .general: return "gear"
+            case .cleanup: return "trash"
+            case .fileTypes: return "doc.text"
+            case .riskManagement: return "exclamationmark.triangle"
+            case .diskInfo: return "internaldrive"
+            case .advanced: return "slider.horizontal.3"
+            }
         }
-        .frame(width: 500, height: 400)
+    }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            // Sidebar
+            VStack(spacing: 0) {
+                ScrollView {
+                    VStack(spacing: 1) {
+                        ForEach(SidebarTab.allCases, id: \.self) { tab in
+                            HStack {
+                                Image(systemName: tab.icon)
+                                    .frame(width: 20, height: 20)
+                                Text(tab.rawValue)
+                                    .font(.system(size: 13, weight: .regular))
+                                Spacer()
+                            }
+                            .padding(.vertical, 10)
+                            .padding(.horizontal, 12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(selectedTab == tab ? Color.accentColor.opacity(0.2) : Color.clear)
+                            .cornerRadius(6)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                selectedTab = tab
+                            }
+                        }
+                    }
+                    .padding(.vertical, 8)
+                }
+                .frame(width: 200)
+                .background(Color(hex: "#b3b3b3").opacity(0.1))
+            }
+            .frame(width: 200)
+            .background(Color(hex: "#b3b3b3").opacity(0.1))
+
+            Divider()
+
+            // Content area
+            Group {
+                switch selectedTab {
+                case .general:
+                    GeneralSettingsView(
+                        rules: $rules,
+                        showResetConfirmation: $showResetConfirmation,
+                        showSaveSuccess: $showSaveSuccess,
+                        saveMessage: $saveMessage,
+                        saveRules: saveRules
+                    )
+                case .cleanup:
+                    CleanupSettingsView(
+                        progressTracker: progressTracker,
+                        rules: rules,
+                        diskStats: diskStats,
+                        loadDiskStats: loadDiskStats
+                    )
+                case .fileTypes:
+                    FileTypesSettingsView(
+                        rules: $rules,
+                        showFileTypeRulesEditor: $showFileTypeRulesEditor
+                    )
+                case .riskManagement:
+                    RiskManagementSettingsView(
+                        rules: $rules,
+                        showAddOverride: $showAddOverride
+                    )
+                case .diskInfo:
+                    DiskInfoSettingsView(rules: $rules)
+                case .advanced:
+                    AdvancedSettingsView(
+                        rules: $rules,
+                        showAddPattern: $showAddPattern,
+                        showConfigureSchedule: $showConfigureSchedule
+                    )
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding()
+            .background(Color(nsColor: .windowBackgroundColor))
+        }
+        .frame(width: 700, height: 500)
         .onAppear {
             loadDiskStats()
         }
@@ -106,7 +184,32 @@ struct SettingsView: View {
         )
     }
 
-    private var generalSettings: some View {
+    private func loadDiskStats() {
+        let scanner = DiskScanner()
+        diskStats = scanner.getDiskUsage()
+    }
+
+    private func saveRules() {
+        rules.save()
+        saveMessage = "Settings saved successfully"
+        showSaveSuccess = true
+
+        // Auto-hide after 2 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            showSaveSuccess = false
+        }
+    }
+}
+
+// MARK: - General Settings View
+private struct GeneralSettingsView: View {
+    @Binding var rules: CleanupRules
+    @Binding var showResetConfirmation: Bool
+    @Binding var showSaveSuccess: Bool
+    @Binding var saveMessage: String
+    let saveRules: () -> Void
+
+    var body: some View {
         Form {
             Section("Risk Management") {
                 VStack(alignment: .leading, spacing: 12) {
@@ -153,6 +256,11 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Button("Save Settings") {
                         rules.save()
+                        saveMessage = "Settings saved successfully"
+                        showSaveSuccess = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                            showSaveSuccess = false
+                        }
                     }
                     .buttonStyle(.borderedProminent)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -179,10 +287,17 @@ struct SettingsView: View {
         } message: {
             Text("Are you sure you want to reset all settings to their default values? This action cannot be undone.")
         }
-        .padding()
     }
+}
 
-    private var cleanupSettings: some View {
+// MARK: - Cleanup Settings View
+private struct CleanupSettingsView: View {
+    @ObservedObject var progressTracker: ProgressTracker
+    let rules: CleanupRules
+    let diskStats: DiskStats?
+    let loadDiskStats: () -> Void
+
+    var body: some View {
         Form {
             Section("Quick Actions") {
                 VStack(alignment: .leading, spacing: 12) {
@@ -256,33 +371,24 @@ struct SettingsView: View {
                 }
             }
         }
-        .padding()
     }
 
-    private var diskInfoView: some View {
-        Form {
-            EditableListSection(
-                title: "Included Locations",
-                items: $rules.includeLocations,
-                placeholder: "Add location path..."
-            )
-
-            EditableListSection(
-                title: "Excluded Locations",
-                items: $rules.excludeLocations,
-                placeholder: "Add excluded path..."
-            )
-
-            EditableListSection(
-                title: "App Caches to Clean",
-                items: $rules.appCachesToClean,
-                placeholder: "Add app bundle ID..."
-            )
+    private func colorForHealth(_ health: DiskHealth) -> Color {
+        switch health {
+        case .good: return .green
+        case .warning: return .orange
+        case .critical: return .red
+        case .full: return .purple
         }
-        .padding()
     }
+}
 
-    private var advancedSettings: some View {
+// MARK: - File Types Settings View
+private struct FileTypesSettingsView: View {
+    @Binding var rules: CleanupRules
+    @Binding var showFileTypeRulesEditor: Bool
+
+    var body: some View {
         Form {
             Section("File Type Rules") {
                 VStack(alignment: .leading, spacing: 12) {
@@ -318,7 +424,17 @@ struct SettingsView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
+        }
+    }
+}
 
+// MARK: - Risk Management Settings View
+private struct RiskManagementSettingsView: View {
+    @Binding var rules: CleanupRules
+    @Binding var showAddOverride: Bool
+
+    var body: some View {
+        Form {
             Section("Custom Risk Overrides") {
                 VStack(alignment: .leading, spacing: 12) {
                     if rules.customRiskOverrides.isEmpty {
@@ -356,7 +472,45 @@ struct SettingsView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
+        }
+    }
+}
 
+// MARK: - Disk Info Settings View
+private struct DiskInfoSettingsView: View {
+    @Binding var rules: CleanupRules
+
+    var body: some View {
+        Form {
+            EditableListSection(
+                title: "Included Locations",
+                items: $rules.includeLocations,
+                placeholder: "Add location path..."
+            )
+
+            EditableListSection(
+                title: "Excluded Locations",
+                items: $rules.excludeLocations,
+                placeholder: "Add excluded path..."
+            )
+
+            EditableListSection(
+                title: "App Caches to Clean",
+                items: $rules.appCachesToClean,
+                placeholder: "Add app bundle ID..."
+            )
+        }
+    }
+}
+
+// MARK: - Advanced Settings View
+private struct AdvancedSettingsView: View {
+    @Binding var rules: CleanupRules
+    @Binding var showAddPattern: Bool
+    @Binding var showConfigureSchedule: Bool
+
+    var body: some View {
+        Form {
             Section("Exclusion Patterns") {
                 VStack(alignment: .leading, spacing: 12) {
                     if rules.exclusionPatterns.isEmpty {
@@ -422,35 +576,10 @@ struct SettingsView: View {
                 }
             }
         }
-        .padding()
-    }
-
-    private func loadDiskStats() {
-        let scanner = DiskScanner()
-        diskStats = scanner.getDiskUsage()
-    }
-
-    private func colorForHealth(_ health: DiskHealth) -> Color {
-        switch health {
-        case .good: return .green
-        case .warning: return .orange
-        case .critical: return .red
-        case .full: return .purple
-        }
-    }
-
-    private func saveRules() {
-        rules.save()
-        saveMessage = "Settings saved successfully"
-        showSaveSuccess = true
-
-        // Auto-hide after 2 seconds
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-            showSaveSuccess = false
-        }
     }
 }
 
+// MARK: - Supporting Views
 private struct AgeRuleInput: View {
     let label: String
     @Binding var value: Int
@@ -591,6 +720,34 @@ private struct EditableListSection: View {
             items.append(trimmed)
         }
         newItem = ""
+    }
+}
+
+// MARK: - Color Extension for Hex Support
+extension Color {
+    init(hex: String) {
+        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var int: UInt64 = 0
+        Scanner(string: hex).scanHexInt64(&int)
+        let a, r, g, b: UInt64
+        switch hex.count {
+        case 3: // RGB (12-bit)
+            (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
+        case 6: // RGB (24-bit)
+            (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
+        case 8: // ARGB (32-bit)
+            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
+        default:
+            (a, r, g, b) = (1, 1, 1, 0)
+        }
+
+        self.init(
+            .sRGB,
+            red: Double(r) / 255,
+            green: Double(g) / 255,
+            blue: Double(b) / 255,
+            opacity: Double(a) / 255
+        )
     }
 }
 
