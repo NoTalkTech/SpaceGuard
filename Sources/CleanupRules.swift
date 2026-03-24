@@ -252,6 +252,126 @@ struct CleanupRules: Codable {
 
         return true
     }
+
+    // MARK: - Rule Conflict Detection and Resolution
+
+    /// Check for rule conflicts and return descriptions of any found
+    func detectConflicts() -> [RuleConflict] {
+        var conflicts: [RuleConflict] = []
+
+        // 1. Check for path inclusion/exclusion conflicts
+        for include in includeLocations {
+            for exclude in excludeLocations {
+                if include.hasPrefix(exclude) || exclude.hasPrefix(include) {
+                    conflicts.append(RuleConflict(
+                        type: .pathInclusionExclusion,
+                        description: "Path '\(include)' is both included and excluded (conflicts with '\(exclude)')",
+                        severity: .high
+                    ))
+                }
+            }
+        }
+
+        // 2. Check for file type rule conflicts
+        for ext in fileTypeRules.whitelistedExtensions {
+            if fileTypeRules.blacklistedExtensions.contains(ext) {
+                conflicts.append(RuleConflict(
+                    type: .fileTypeRule,
+                    description: "File extension '\(ext)' is both whitelisted and blacklisted",
+                    severity: .medium
+                ))
+            }
+        }
+
+        // 3. Check for custom risk override conflicts with system paths
+        for customOverride in customRiskOverrides {
+            if isSystemFile(customOverride.path) && customOverride.riskLevel != .high {
+                conflicts.append(RuleConflict(
+                    type: .customRiskOverride,
+                    description: "Custom risk override for system path '\(customOverride.path)' sets risk to \(customOverride.riskLevel), but system files should typically be high risk",
+                    severity: .high
+                ))
+            }
+        }
+
+        // 4. Check for unreasonable age thresholds
+        if deleteDownloadsOlderThanDays < 1 {
+            conflicts.append(RuleConflict(
+                type: .ageThreshold,
+                description: "Download age threshold (\(deleteDownloadsOlderThanDays) days) is too low and may delete recent files",
+                severity: .medium
+            ))
+        }
+
+        if deleteCacheOlderThanDays < 0 {
+            conflicts.append(RuleConflict(
+                type: .ageThreshold,
+                description: "Cache age threshold (\(deleteCacheOlderThanDays) days) is negative",
+                severity: .high
+            ))
+        }
+
+        return conflicts
+    }
+
+    /// Resolve conflicts by applying predefined resolution strategies
+    mutating func resolveConflicts() {
+        // 1. Resolve file type conflicts: blacklist takes precedence over whitelist
+        var resolvedWhitelist = fileTypeRules.whitelistedExtensions
+        for ext in fileTypeRules.blacklistedExtensions {
+            resolvedWhitelist.removeAll { $0 == ext }
+        }
+        fileTypeRules.whitelistedExtensions = resolvedWhitelist
+
+        // 2. Resolve path conflicts: exclusion takes precedence over inclusion
+        // (This is already handled in shouldIncludeFile method)
+
+        // 3. Ensure system files are always high risk
+        for i in 0..<customRiskOverrides.count {
+            if isSystemFile(customRiskOverrides[i].path) {
+                customRiskOverrides[i].riskLevel = .high
+            }
+        }
+
+        // 4. Validate age thresholds
+        deleteDownloadsOlderThanDays = max(1, deleteDownloadsOlderThanDays)
+        deleteLogsOlderThanDays = max(0, deleteLogsOlderThanDays)
+        deleteCacheOlderThanDays = max(0, deleteCacheOlderThanDays)
+    }
+
+    /// Check if a path is a system file (helper for conflict detection)
+    private func isSystemFile(_ path: String) -> Bool {
+        let systemPaths = ["/System", "/usr", "/bin", "/sbin", "/etc", "/private", "/Library", "/Applications/Utilities"]
+        return systemPaths.contains { path.hasPrefix($0) }
+    }
+}
+
+// MARK: - Rule Conflict Structures
+
+enum RuleConflictType: String, Codable {
+    case pathInclusionExclusion = "Path inclusion/exclusion conflict"
+    case fileTypeRule = "File type rule conflict"
+    case customRiskOverride = "Custom risk override conflict"
+    case ageThreshold = "Age threshold conflict"
+    case sizeThreshold = "Size threshold conflict"
+}
+
+enum ConflictSeverity: String, Codable {
+    case low = "Low"
+    case medium = "Medium"
+    case high = "High"
+}
+
+struct RuleConflict: Identifiable, Codable {
+    let id = UUID()
+    let type: RuleConflictType
+    let description: String
+    let severity: ConflictSeverity
+
+    enum CodingKeys: String, CodingKey {
+        case type, description, severity
+        // id is excluded from coding because it's auto-generated
+    }
 }
 
 // MARK: - Advanced Rule Structures

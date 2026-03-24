@@ -47,3 +47,6 @@ SpaceGuard.zip
 *.tmp
 *.cache
 *.log
+
+# Worktrees
+.worktrees/

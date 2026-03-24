@@ -18,6 +18,10 @@ struct SettingsView: View {
     // Reset confirmation
     @State private var showResetConfirmation = false
 
+    // Rule conflicts
+    @State private var ruleConflicts: [RuleConflict] = []
+    @State private var showRuleConflicts = false
+
     // Sidebar selection
     @State private var selectedTab: SidebarTab = .general
 
@@ -164,8 +168,16 @@ struct SettingsView: View {
                     VStack {
                         Spacer()
                         HStack {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundColor(.green)
+                            if ruleConflicts.isEmpty {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(.green)
+                            } else {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundColor(.orange)
+                                    .onTapGesture {
+                                        showRuleConflicts = true
+                                    }
+                            }
                             Text(saveMessage)
                                 .font(.caption)
                                 .foregroundColor(.primary)
@@ -182,6 +194,9 @@ struct SettingsView: View {
                 }
             }
         )
+        .sheet(isPresented: $showRuleConflicts) {
+            RuleConflictsView(isPresented: $showRuleConflicts, conflicts: ruleConflicts)
+        }
     }
 
     private func loadDiskStats() {
@@ -190,14 +205,31 @@ struct SettingsView: View {
     }
 
     private func saveRules() {
+        // Validate rules before saving
+        let cleanupEngine = CleanupEngine()
+        let (_, conflicts) = cleanupEngine.validateRules(rules)
+        ruleConflicts = conflicts
+
+        if !conflicts.isEmpty {
+            showRuleConflicts = true
+            saveMessage = "Settings saved with \(conflicts.count) rule conflict(s)"
+        } else {
+            saveMessage = "Settings saved successfully"
+        }
+
         rules.save()
-        saveMessage = "Settings saved successfully"
         showSaveSuccess = true
 
         // Auto-hide after 2 seconds
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
             showSaveSuccess = false
         }
+    }
+
+    private func validateRules() {
+        let cleanupEngine = CleanupEngine()
+        let (_, conflicts) = cleanupEngine.validateRules(rules)
+        ruleConflicts = conflicts
     }
 }
 
