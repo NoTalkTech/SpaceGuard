@@ -65,6 +65,10 @@ struct CleanupRules: Codable {
     var exclusionPatterns: [String] = []
     var scheduledCleanup: ScheduledCleanup? = nil
 
+    // Preset management
+    var activePreset: CleanupPreset? = nil
+    var appliedPresets: [CleanupPreset] = []
+
     enum CodingKeys: String, CodingKey {
         case autoCleanLowRisk
         case confirmMediumRisk
@@ -81,6 +85,8 @@ struct CleanupRules: Codable {
         case customRiskOverrides
         case exclusionPatterns
         case scheduledCleanup
+        case activePreset
+        case appliedPresets
     }
 
     static func load() -> CleanupRules {
@@ -110,6 +116,14 @@ struct CleanupRules: Codable {
 
         if defaults.object(forKey: "deleteCacheOlderThanDays") != nil {
             rules.deleteCacheOlderThanDays = defaults.integer(forKey: "deleteCacheOlderThanDays")
+        }
+
+        if defaults.object(forKey: "minimumFileSizeToConsider") != nil {
+            rules.minimumFileSizeToConsider = Int64(defaults.integer(forKey: "minimumFileSizeToConsider"))
+        }
+
+        if defaults.object(forKey: "skipFilesLargerThan") != nil {
+            rules.skipFilesLargerThan = Int64(defaults.integer(forKey: "skipFilesLargerThan"))
         }
 
         if let savedIncludes = defaults.stringArray(forKey: "includeLocations") {
@@ -144,6 +158,17 @@ struct CleanupRules: Codable {
             rules.scheduledCleanup = decoded
         }
 
+        // Load preset information
+        if let activePresetData = defaults.data(forKey: "activePreset"),
+           let decoded = try? JSONDecoder().decode(CleanupPreset.self, from: activePresetData) {
+            rules.activePreset = decoded
+        }
+
+        if let appliedPresetsData = defaults.data(forKey: "appliedPresets"),
+           let decoded = try? JSONDecoder().decode([CleanupPreset].self, from: appliedPresetsData) {
+            rules.appliedPresets = decoded
+        }
+
         return rules
     }
 
@@ -156,6 +181,8 @@ struct CleanupRules: Codable {
         defaults.set(deleteDownloadsOlderThanDays, forKey: "deleteDownloadsOlderThanDays")
         defaults.set(deleteLogsOlderThanDays, forKey: "deleteLogsOlderThanDays")
         defaults.set(deleteCacheOlderThanDays, forKey: "deleteCacheOlderThanDays")
+        defaults.set(minimumFileSizeToConsider, forKey: "minimumFileSizeToConsider")
+        defaults.set(skipFilesLargerThan, forKey: "skipFilesLargerThan")
         defaults.set(includeLocations, forKey: "includeLocations")
         defaults.set(excludeLocations, forKey: "excludeLocations")
         defaults.set(appCachesToClean, forKey: "appCachesToClean")
@@ -173,6 +200,16 @@ struct CleanupRules: Codable {
         if let scheduledCleanup = scheduledCleanup,
            let scheduledData = try? JSONEncoder().encode(scheduledCleanup) {
             defaults.set(scheduledData, forKey: "scheduledCleanup")
+        }
+
+        // Save preset information
+        if let activePreset = activePreset,
+           let presetData = try? JSONEncoder().encode(activePreset) {
+            defaults.set(presetData, forKey: "activePreset")
+        }
+
+        if let appliedPresetsData = try? JSONEncoder().encode(appliedPresets) {
+            defaults.set(appliedPresetsData, forKey: "appliedPresets")
         }
     }
 
@@ -251,6 +288,159 @@ struct CleanupRules: Codable {
         }
 
         return true
+    }
+
+    // MARK: - Rule Conflict Detection and Resolution
+
+    /// Check for rule conflicts and return descriptions of any found
+    func detectConflicts() -> [RuleConflict] {
+        var conflicts: [RuleConflict] = []
+
+        // 1. Check for path inclusion/exclusion conflicts
+        for include in includeLocations {
+            for exclude in excludeLocations {
+                if include.hasPrefix(exclude) || exclude.hasPrefix(include) {
+                    conflicts.append(RuleConflict(
+                        type: .pathInclusionExclusion,
+                        description: "Path '\(include)' is both included and excluded (conflicts with '\(exclude)')",
+                        severity: .high
+                    ))
+                }
+            }
+        }
+
+        // 2. Check for file type rule conflicts
+        for ext in fileTypeRules.whitelistedExtensions {
+            if fileTypeRules.blacklistedExtensions.contains(ext) {
+                conflicts.append(RuleConflict(
+                    type: .fileTypeRule,
+                    description: "File extension '\(ext)' is both whitelisted and blacklisted",
+                    severity: .medium
+                ))
+            }
+        }
+
+        // 3. Check for custom risk override conflicts with system paths
+        for customOverride in customRiskOverrides {
+            if isSystemFile(customOverride.path) && customOverride.riskLevel != .high {
+                conflicts.append(RuleConflict(
+                    type: .customRiskOverride,
+                    description: "Custom risk override for system path '\(customOverride.path)' sets risk to \(customOverride.riskLevel), but system files should typically be high risk",
+                    severity: .high
+                ))
+            }
+        }
+
+        // 4. Check for unreasonable age thresholds
+        if deleteDownloadsOlderThanDays < 1 {
+            conflicts.append(RuleConflict(
+                type: .ageThreshold,
+                description: "Download age threshold (\(deleteDownloadsOlderThanDays) days) is too low and may delete recent files",
+                severity: .medium
+            ))
+        }
+
+        if deleteCacheOlderThanDays < 0 {
+            conflicts.append(RuleConflict(
+                type: .ageThreshold,
+                description: "Cache age threshold (\(deleteCacheOlderThanDays) days) is negative",
+                severity: .high
+            ))
+        }
+
+        return conflicts
+    }
+
+    /// Resolve conflicts by applying predefined resolution strategies
+    mutating func resolveConflicts() {
+        // 1. Resolve file type conflicts: blacklist takes precedence over whitelist
+        var resolvedWhitelist = fileTypeRules.whitelistedExtensions
+        for ext in fileTypeRules.blacklistedExtensions {
+            resolvedWhitelist.removeAll { $0 == ext }
+        }
+        fileTypeRules.whitelistedExtensions = resolvedWhitelist
+
+        // 2. Resolve path conflicts: exclusion takes precedence over inclusion
+        // (This is already handled in shouldIncludeFile method)
+
+        // 3. Ensure system files are always high risk
+        for i in 0..<customRiskOverrides.count {
+            if isSystemFile(customRiskOverrides[i].path) {
+                customRiskOverrides[i].riskLevel = .high
+            }
+        }
+
+        // 4. Validate age thresholds
+        deleteDownloadsOlderThanDays = max(1, deleteDownloadsOlderThanDays)
+        deleteLogsOlderThanDays = max(0, deleteLogsOlderThanDays)
+        deleteCacheOlderThanDays = max(0, deleteCacheOlderThanDays)
+    }
+
+    /// Check if a path is a system file (helper for conflict detection)
+    private func isSystemFile(_ path: String) -> Bool {
+        let systemPaths = ["/System", "/usr", "/bin", "/sbin", "/etc", "/private", "/Library", "/Applications/Utilities"]
+        return systemPaths.contains { path.hasPrefix($0) }
+    }
+
+    /// Apply a preset to these rules
+    mutating func applyPreset(_ preset: CleanupPreset) {
+        let presetManager = CleanupPresetManager()
+        let presetRules = presetManager.getPresetRules(preset)
+
+        // Apply preset rules (simplified merging)
+        self.autoCleanLowRisk = presetRules.autoCleanLowRisk
+        self.confirmMediumRisk = presetRules.confirmMediumRisk
+        self.neverDeleteHighRisk = presetRules.neverDeleteHighRisk
+
+        // Merge age thresholds (take smaller value, i.e., more aggressive cleaning)
+        self.deleteDownloadsOlderThanDays = min(self.deleteDownloadsOlderThanDays, presetRules.deleteDownloadsOlderThanDays)
+        self.deleteLogsOlderThanDays = min(self.deleteLogsOlderThanDays, presetRules.deleteLogsOlderThanDays)
+        self.deleteCacheOlderThanDays = min(self.deleteCacheOlderThanDays, presetRules.deleteCacheOlderThanDays)
+
+        // Merge size thresholds (take smaller value, i.e., consider smaller files)
+        self.minimumFileSizeToConsider = min(self.minimumFileSizeToConsider, presetRules.minimumFileSizeToConsider)
+        self.skipFilesLargerThan = min(self.skipFilesLargerThan, presetRules.skipFilesLargerThan)
+
+        // Merge locations (unique)
+        self.includeLocations = Array(Set(self.includeLocations + presetRules.includeLocations)).sorted()
+        self.excludeLocations = Array(Set(self.excludeLocations + presetRules.excludeLocations)).sorted()
+
+        // Merge app caches (unique)
+        self.appCachesToClean = Array(Set(self.appCachesToClean + presetRules.appCachesToClean)).sorted()
+
+        // Set active preset
+        self.activePreset = preset
+        if !self.appliedPresets.contains(preset) {
+            self.appliedPresets.append(preset)
+        }
+    }
+}
+
+// MARK: - Rule Conflict Structures
+
+enum RuleConflictType: String, Codable {
+    case pathInclusionExclusion = "Path inclusion/exclusion conflict"
+    case fileTypeRule = "File type rule conflict"
+    case customRiskOverride = "Custom risk override conflict"
+    case ageThreshold = "Age threshold conflict"
+    case sizeThreshold = "Size threshold conflict"
+}
+
+enum ConflictSeverity: String, Codable {
+    case low = "Low"
+    case medium = "Medium"
+    case high = "High"
+}
+
+struct RuleConflict: Identifiable, Codable {
+    let id = UUID()
+    let type: RuleConflictType
+    let description: String
+    let severity: ConflictSeverity
+
+    enum CodingKeys: String, CodingKey {
+        case type, description, severity
+        // id is excluded from coding because it's auto-generated
     }
 }
 
