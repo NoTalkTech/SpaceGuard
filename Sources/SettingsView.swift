@@ -32,6 +32,7 @@ struct SettingsView: View {
         case riskManagement = "Risk Management"
         case diskInfo = "Disk Info"
         case advanced = "Advanced"
+        case presetCleanup = "Preset Cleanup"
 
         var icon: String {
             switch self {
@@ -41,6 +42,7 @@ struct SettingsView: View {
             case .riskManagement: return "exclamationmark.triangle"
             case .diskInfo: return "internaldrive"
             case .advanced: return "slider.horizontal.3"
+            case .presetCleanup: return "checklist"
             }
         }
     }
@@ -110,6 +112,8 @@ struct SettingsView: View {
                     )
                 case .diskInfo:
                     DiskInfoSettingsView(rules: $rules)
+                case .presetCleanup:
+                    CleanupPresetsView()
                 case .advanced:
                     AdvancedSettingsView(
                         rules: $rules,

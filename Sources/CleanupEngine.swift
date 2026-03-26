@@ -2,9 +2,11 @@ import Foundation
 
 class CleanupEngine {
     private let riskAnalyzer = RiskAnalyzer()
+    private let safetyChecker = SafetyChecker()
     private let fileManager = FileManager.default
     private var isCleaning = false
     private var cancellationToken: Bool = false
+
 
     // MARK: - Rule Management
 
@@ -511,5 +513,206 @@ class CleanupEngine {
         let lowRiskFiles = allFiles.filter { $0.riskLevel == .low }
 
         return await cleanupFiles(lowRiskFiles, rules: validatedRules, progress: progress, confirmAction: confirmAction)
+    }
+
+    // MARK: - Scenario-Based Cleanup Methods
+
+    /// Perform safe cleanup process with safety checks and space estimation
+    func performSafeCleanup(rules: CleanupRules, progress: @escaping (Int, Int, Int64) -> Void) async -> CleanupResult {
+        // Step 1: Validate cleanup safety
+        let safetyResult = validateCleanupSafety(rules: rules)
+        guard safetyResult.isSafe else {
+            var errors: [CleanupError] = []
+            for issue in safetyResult.safetyIssues {
+                errors.append(CleanupError(filePath: issue.path ?? "general", error: NSError(domain: "SafetyCheck", code: 1, userInfo: [NSLocalizedDescriptionKey: issue.description])))
+            }
+            return CleanupResult(filesDeleted: 0, spaceFreed: 0, duration: 0, errors: errors)
+        }
+
+        // Step 2: Estimate cleanup space
+        let estimatedSpace = estimateCleanupSpace(rules: rules)
+        print("Estimated cleanup space: \(formatBytes(estimatedSpace))")
+
+        // Step 3: Scan for files using rules
+        let scanner = DiskScanner()
+        var allFiles: [FileItem] = []
+
+        for includePath in rules.includeLocations {
+            guard fileManager.fileExists(atPath: includePath) else { continue }
+
+            do {
+                let scanResult = try await scanner.scanDirectory(at: includePath) { scanned, total in
+                    progress(0, 1, 0) // Update progress during scan
+                }
+                let analyzer = RiskAnalyzer()
+                let analyzedFiles = analyzer.analyzeFiles(scanResult.files, rules: rules)
+                allFiles.append(contentsOf: analyzedFiles)
+            } catch {
+                // Continue with other paths
+                continue
+            }
+        }
+
+        // Step 4: Filter low and medium risk files (safe cleanup)
+        let safeFiles = allFiles.filter { file in
+            if file.riskLevel == .low && rules.autoCleanLowRisk {
+                return true
+            }
+            if file.riskLevel == .medium && rules.confirmMediumRisk {
+                return true
+            }
+            return false
+        }
+
+        // Step 5: Execute cleanup
+        return await cleanupFiles(safeFiles, rules: rules, progress: progress, confirmAction: nil)
+    }
+
+    /// Validate cleanup safety by checking various conditions
+    func validateCleanupSafety(rules: CleanupRules) -> SafetyCheckResult {
+        var issues: [SafetyIssue] = []
+
+        // Check if any included paths contain system files
+        let systemPaths = ["/System", "/usr", "/bin", "/sbin", "/etc", "/private", "/Library"]
+        for includePath in rules.includeLocations {
+            for systemPath in systemPaths {
+                if includePath.hasPrefix(systemPath) {
+                    issues.append(SafetyIssue(
+                        type: .systemFileInclusion,
+                        description: "Included path contains system files: \(includePath)",
+                        path: includePath,
+                        severity: .high
+                    ))
+                    break
+                }
+            }
+        }
+
+        // Check if applications associated with included paths are running
+        for includePath in rules.includeLocations {
+            if safetyChecker.checkApplicationForPathRunning(includePath) {
+                issues.append(SafetyIssue(
+                    type: .applicationRunning,
+                    description: "Application associated with path is running: \(includePath)",
+                    path: includePath,
+                    severity: .medium
+                ))
+            }
+        }
+
+        // Check disk space for estimated cleanup size
+        let estimatedSize = estimateCleanupSpace(rules: rules)
+        if !safetyChecker.hasSufficientDiskSpace(forCleaningSize: estimatedSize) {
+            issues.append(SafetyIssue(
+                type: .lowDiskSpace,
+                description: "Insufficient disk space for estimated cleanup size (\(formatBytes(estimatedSize)))",
+                path: nil,
+                severity: .high
+            ))
+        }
+
+        return SafetyCheckResult(isSafe: issues.isEmpty, safetyIssues: issues)
+    }
+
+    /// Estimate cleanup space based on rules and scenarios
+    func estimateCleanupSpace(rules: CleanupRules) -> Int64 {
+        let estimator = SpaceEstimator()
+
+        // Estimate space based on scenarios if preset is active
+        if let activePreset = rules.activePreset {
+            let presetManager = CleanupPresetManager()
+            let report = presetManager.getPresetSavingsReport(activePreset)
+            return report.totalSavings
+        }
+
+        // Estimate space based on rules
+        return estimator.estimateSpaceForRules(rules)
+    }
+
+    /// Execute cleanup for a specific scenario
+    func executeScenarioCleanup(_ scenario: CleanupScenario, rules: CleanupRules, progress: @escaping (Int, Int, Int64) -> Void) async -> CleanupResult {
+        let detector = CleanupScenariosDetector()
+        let result = detector.detectScenario(scenario)
+
+        guard result.detected else {
+            return CleanupResult(
+                filesDeleted: 0,
+                spaceFreed: 0,
+                duration: 0,
+                errors: [CleanupError(filePath: scenario.displayName, error: NSError(domain: "ScenarioCleanup", code: 404, userInfo: [NSLocalizedDescriptionKey: "Scenario not detected: \(scenario.displayName)"]))]
+            )
+        }
+
+        // For scenarios that use command line cleanup
+        if scenario.usesCommandLine, let command = scenario.cleanupCommand {
+            do {
+                let output = try executeCommand(command)
+                // Log command output for debugging
+                if !output.isEmpty {
+                    print("Command output: \(output)")
+                }
+                // Estimate space based on command output
+                let estimatedSpace = result.estimatedSpace
+                return CleanupResult(
+                    filesDeleted: 1, // Representing one cleanup operation
+                    spaceFreed: estimatedSpace,
+                    duration: 0.1,
+                    errors: []
+                )
+            } catch {
+                return CleanupResult(
+                    filesDeleted: 0,
+                    spaceFreed: 0,
+                    duration: 0,
+                    errors: [CleanupError(filePath: scenario.displayName, error: error)]
+                )
+            }
+        } else {
+            // For file-based scenarios, scan and delete files
+            var allFiles: [FileItem] = []
+            let scanner = DiskScanner()
+
+            for path in result.detectedPaths {
+                guard fileManager.fileExists(atPath: path) else { continue }
+
+                do {
+                    let scanResult = try await scanner.scanDirectory(at: path) { _, _ in }
+                    let analyzer = RiskAnalyzer()
+                    let analyzedFiles = analyzer.analyzeFiles(scanResult.files, rules: rules)
+                    allFiles.append(contentsOf: analyzedFiles)
+                } catch {
+                    continue
+                }
+            }
+
+            // Filter low-risk files from this scenario
+            let scenarioFiles = allFiles.filter { $0.riskLevel == .low }
+
+            return await cleanupFiles(scenarioFiles, rules: rules, progress: progress, confirmAction: nil)
+        }
+    }
+
+    // MARK: - Helper Methods
+
+    private func executeCommand(_ command: String) throws -> String {
+        let process = Process()
+        let pipe = Pipe()
+
+        process.executableURL = URL(fileURLWithPath: "/bin/bash")
+        process.arguments = ["-c", command]
+        process.standardOutput = pipe
+        process.standardError = pipe
+
+        try process.run()
+        process.waitUntilExit()
+
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        return String(data: data, encoding: .utf8) ?? ""
+    }
+
+    private func formatBytes(_ bytes: Int64) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: bytes)
     }
 }

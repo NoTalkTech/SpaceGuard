@@ -23,6 +23,11 @@ let package = Package(
             swiftSettings: [
                 .enableUpcomingFeature("BareSlashRegexLiterals")
             ]
+        ),
+        .testTarget(
+            name: "SpaceGuardTests",
+            dependencies: ["SpaceGuard"],
+            path: "Tests"
         )
     ]
 )

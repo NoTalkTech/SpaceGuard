@@ -97,7 +97,7 @@ class RiskAnalyzer {
         // Calculate total weighted score
         let totalWeight = factors.reduce(0) { $0 + $1.weight }
         let weightedScore = factors.reduce(0) { $0 + ($1.score * $1.weight) }
-        let normalizedScore = totalWeight > 0 ? (weightedScore / totalWeight) * 100 : 0
+        let normalizedScore = totalWeight > 0 ? weightedScore / totalWeight : 0
 
         // Determine risk level based on score
         let riskLevel: RiskLevel
@@ -129,9 +129,9 @@ class RiskAnalyzer {
             return customRisk
         }
 
-        // High risk: System files and critical user data
-        if isSystemFile(path) || isApplicationBundle(path) || isCriticalUserFile(path) {
-            return .high
+        // Low risk: Cache and temporary files (safest to delete)
+        if isCacheFile(path) || isTempFile(path) || isTrashFile(path) {
+            return .low
         }
 
         // Medium risk: User data that might be important
@@ -139,9 +139,9 @@ class RiskAnalyzer {
             return .medium
         }
 
-        // Low risk: Cache and temporary files
-        if isCacheFile(path) || isTempFile(path) || isTrashFile(path) {
-            return .low
+        // High risk: System files and critical user data
+        if isSystemFile(path) || isApplicationBundle(path) || isCriticalUserFile(path) {
+            return .high
         }
 
         // Default to medium for unknown files
@@ -171,10 +171,10 @@ class RiskAnalyzer {
             }
 
         case .low:
-            if isCacheFile(path) {
-                return "Cache file"
-            } else if isTempFile(path) {
+            if isTempFile(path) {
                 return "Temporary file"
+            } else if isCacheFile(path) {
+                return "Cache file"
             } else if isTrashFile(path) {
                 return "Trash content"
             }
@@ -186,6 +186,12 @@ class RiskAnalyzer {
     // MARK: - Classification Helpers
 
     private func isSystemFile(_ path: String) -> Bool {
+        let home = NSHomeDirectory()
+        // 用户主目录下的文件不是系统文件
+        if path.hasPrefix(home) {
+            return false
+        }
+
         let systemPaths = ["/System", "/usr", "/bin", "/sbin", "/etc", "/private", "/Library", "/Applications/Utilities"]
         return systemPaths.contains { path.hasPrefix($0) }
     }
@@ -195,36 +201,64 @@ class RiskAnalyzer {
     }
 
     private func isCriticalUserFile(_ path: String) -> Bool {
-        let home = NSHomeDirectory()
-        let criticalPaths = [
-            "\(home)/Library/Application Support",
-            "\(home)/Library/Preferences",
-            "\(home)/Library/Mail",
-            "\(home)/Library/Messages",
-            "\(home)/Documents",
-            "\(home)/Desktop",
-            "\(home)/Pictures",
-            "\(home)/Movies",
-            "\(home)/Music"
+        // 检查关键用户数据目录
+        let criticalPatterns = [
+            "/Library/Application Support/",
+            "/Library/Preferences/",
+            "/Library/Mail/",
+            "/Library/Messages/"
         ]
 
-        return criticalPaths.contains { path.hasPrefix($0) }
+        // 排除系统目录
+        if isSystemFile(path) {
+            return false
+        }
+
+        // 检查是否匹配任一关键模式
+        for pattern in criticalPatterns {
+            if path.contains(pattern) {
+                return true
+            }
+        }
+
+        return false
     }
 
     private func isUserDocument(_ path: String) -> Bool {
-        let home = NSHomeDirectory()
-        let documentPaths = [
-            "\(home)/Downloads",
-            "\(home)/Public",
-            "\(home)/Sites"
+        // 检查常见用户文档目录模式
+        let documentPatterns = [
+            "/Documents/",
+            "/Desktop/",
+            "/Pictures/",
+            "/Movies/",
+            "/Music/",
+            "/Downloads/",
+            "/Public/",
+            "/Sites/"
         ]
 
-        return documentPaths.contains { path.hasPrefix($0) } && !isRecentDownload(path)
+        // 排除系统目录
+        if isSystemFile(path) {
+            return false
+        }
+
+        // 检查是否匹配任一文档模式
+        for pattern in documentPatterns {
+            if path.contains(pattern) {
+                // 对于Downloads目录，排除最近下载
+                if pattern == "/Downloads/" {
+                    return !isRecentDownload(path)
+                }
+                return true
+            }
+        }
+
+        return false
     }
 
     private func isRecentDownload(_ path: String) -> Bool {
-        let home = NSHomeDirectory()
-        guard path.hasPrefix("\(home)/Downloads/") else {
+        // 检查是否是Downloads目录下的文件
+        guard path.contains("/Downloads/") else {
             return false
         }
 
@@ -252,7 +286,8 @@ class RiskAnalyzer {
 
     private func isTempFile(_ path: String) -> Bool {
         return path.contains("/tmp/") || path.contains("/var/tmp/") ||
-               path.hasPrefix("/private/tmp/") || path.hasPrefix("/private/var/tmp/")
+               path.hasPrefix("/private/tmp/") || path.hasPrefix("/private/var/tmp/") ||
+               path.contains("/var/folders/") // macOS temporary directory
     }
 
     private func isTrashFile(_ path: String) -> Bool {
