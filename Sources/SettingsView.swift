@@ -64,12 +64,22 @@ struct SettingsView: View {
                             .padding(.vertical, 10)
                             .padding(.horizontal, 12)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(selectedTab == tab ? Color.accentColor.opacity(0.2) : Color.clear)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(selectedTab == tab ? Color.accentColor.opacity(0.2) : Color.clear)
+                                    .animation(.easeInOut(duration: 0.2), value: selectedTab)
+                            )
                             .cornerRadius(6)
                             .contentShape(Rectangle())
                             .onTapGesture {
-                                selectedTab = tab
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                    selectedTab = tab
+                                }
                             }
+                            .transition(.asymmetric(
+                                insertion: .move(edge: .trailing).combined(with: .opacity),
+                                removal: .move(edge: .leading).combined(with: .opacity)
+                            ))
                         }
                     }
                     .padding(.vertical, 8)
@@ -259,16 +269,19 @@ private struct GeneralSettingsView: View {
                             .help("Automatically delete files classified as low risk")
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .toggleStyle(.switch)
+                            .animation(.easeInOut(duration: 0.2), value: rules.autoCleanLowRisk)
 
                         Toggle("Confirm medium risk files", isOn: $rules.confirmMediumRisk)
                             .help("Ask for confirmation before deleting medium risk files")
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .toggleStyle(.switch)
+                            .animation(.easeInOut(duration: 0.2), value: rules.confirmMediumRisk)
 
                         Toggle("Never delete high risk files", isOn: $rules.neverDeleteHighRisk)
                             .help("Prevent deletion of high risk files")
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .toggleStyle(.switch)
+                            .animation(.easeInOut(duration: 0.2), value: rules.neverDeleteHighRisk)
                     }
                 }
 
@@ -318,6 +331,7 @@ private struct GeneralSettingsView: View {
                             }
                         }
                         .buttonStyle(.borderedProminent)
+                        .transition(.scale.combined(with: .opacity))
 
                         Button("Reset to Defaults") {
                             showResetConfirmation = true
