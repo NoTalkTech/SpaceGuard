@@ -20,6 +20,13 @@ struct CleanupPresetsView: View {
     @State private var operationResult: OperationResult?
     @State private var showOperationResult = false
 
+    // 删除确认
+    @State private var showDeleteConfirmation = false
+    @State private var deletingPreset: CustomPreset?
+
+    // 编辑预设
+    @State private var editingPreset: CustomPreset?
+
     private let presetManager = CleanupPresetManager()
     private let estimator = SpaceEstimator()
     private let cleanupEngine = CleanupEngine()
@@ -80,12 +87,24 @@ struct CleanupPresetsView: View {
         }
         .sheet(isPresented: $showCustomPresetEditor) {
             CustomPresetEditorView(
+                rules: editingPreset?.rules ?? CleanupRules(),
+                presetName: editingPreset?.name ?? "",
+                isEditing: editingPreset != nil,
                 onSave: { customRules, name in
-                    try? saveCustomPreset(customRules, name: name)
+                    if let editingPreset = editingPreset {
+                        // 更新现有预设
+                        try? updateCustomPreset(editingPreset, with: customRules, name: name)
+                    } else {
+                        // 创建新预设
+                        try? saveCustomPreset(customRules, name: name)
+                    }
                     showCustomPresetEditor = false
+                    editingPreset = nil
+                    loadSpaceEstimates()
                 },
                 onCancel: {
                     showCustomPresetEditor = false
+                    editingPreset = nil
                 }
             )
         }
@@ -99,6 +118,18 @@ struct CleanupPresetsView: View {
         } message: {
             if let preset = applyingPreset {
                 Text("确定要应用'\(preset.displayName)'预设吗？\n这将覆盖当前的清理规则设置。")
+            }
+        }
+        .alert("删除预设", isPresented: $showDeleteConfirmation) {
+            Button("取消", role: .cancel) { }
+            Button("删除", role: .destructive) {
+                if let preset = deletingPreset {
+                    deleteCustomPreset(preset)
+                }
+            }
+        } message: {
+            if let preset = deletingPreset {
+                Text("确定要删除'\(preset.name)'预设吗？\n此操作无法撤销。")
             }
         }
     }
@@ -121,6 +152,7 @@ struct CleanupPresetsView: View {
                 }
                 .pickerStyle(.segmented)
                 .frame(width: 200)
+                .animated(actionType)
             }
 
             Text("选择最适合您需求的清理策略，或创建自定义预设")
@@ -140,6 +172,7 @@ struct CleanupPresetsView: View {
                         .foregroundColor(.orange)
                 }
             }
+            .transition(.opacity)
 
             Divider()
         }
@@ -160,12 +193,17 @@ struct CleanupPresetsView: View {
                         isSelected: selectedPreset == preset,
                         estimatedSavings: spaceEstimates[preset] ?? 0,
                         onSelect: {
-                            selectedPreset = preset
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                selectedPreset = preset
+                            }
                         }
                     )
                     .onTapGesture {
-                        selectedPreset = preset
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            selectedPreset = preset
+                        }
                     }
+                    .transition(.scale.combined(with: .opacity))
                 }
             }
         }
@@ -180,29 +218,47 @@ struct CleanupPresetsView: View {
                 ForEach(customPresets) { customPreset in
                     CustomPresetRowView(
                         preset: customPreset,
-                        isSelected: false,
+                        isSelected: selectedPreset == .custom && editingPreset?.id == customPreset.id,
                         onSelect: {
                             // 选择自定义预设
-                            selectedPreset = .custom
-                            // 这里需要加载自定义预设的规则
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                selectedPreset = .custom
+                                editingPreset = customPreset
+                                // 加载自定义预设的规则
+                                rules = customPreset.rules
+                            }
                         },
                         onEdit: {
                             // 编辑自定义预设
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                editingPreset = customPreset
+                                rules = customPreset.rules
+                                showCustomPresetEditor = true
+                            }
                         },
                         onDelete: {
                             // 删除自定义预设
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                deletingPreset = customPreset
+                                showDeleteConfirmation = true
+                            }
                         }
                     )
+                    .transition(.scale.combined(with: .opacity))
                 }
             }
 
             Button(action: {
-                showCustomPresetEditor = true
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    editingPreset = nil
+                    showCustomPresetEditor = true
+                }
             }) {
                 Label("创建自定义预设", systemImage: "plus.circle")
             }
             .buttonStyle(.plain)
             .foregroundColor(.accentColor)
+            .transition(.scale.combined(with: .opacity))
         }
     }
 
@@ -216,8 +272,10 @@ struct CleanupPresetsView: View {
 
             Button(action: {
                 if let preset = selectedPreset {
-                    applyingPreset = preset
-                    showApplyConfirmation = true
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        applyingPreset = preset
+                        showApplyConfirmation = true
+                    }
                 }
             }) {
                 if isLoading {
@@ -234,6 +292,7 @@ struct CleanupPresetsView: View {
             }
             .disabled(selectedPreset == nil || isLoading)
             .buttonStyle(.borderedProminent)
+            .transition(.scale.combined(with: .opacity))
         }
         .padding(.top, 20)
     }
@@ -247,6 +306,8 @@ struct CleanupPresetsView: View {
                     HStack {
                         Image(systemName: result.isSuccess ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                             .foregroundColor(result.isSuccess ? .green : .orange)
+                            .scaleEffect(showOperationResult ? 1.0 : 0.8)
+                            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: showOperationResult)
 
                         Text(result.description)
                             .font(.subheadline)
@@ -254,8 +315,10 @@ struct CleanupPresetsView: View {
                         Spacer()
 
                         Button(action: {
-                            showOperationResult = false
-                            operationResult = nil
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showOperationResult = false
+                                operationResult = nil
+                            }
                         }) {
                             Image(systemName: "xmark.circle.fill")
                                 .foregroundColor(.secondary)
@@ -268,7 +331,7 @@ struct CleanupPresetsView: View {
                             .fill(result.isSuccess ? Color.green.opacity(0.1) : Color.orange.opacity(0.1))
                     )
                 }
-                .transition(.opacity)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
     }
@@ -290,9 +353,11 @@ struct CleanupPresetsView: View {
                 }
             }
 
-            DispatchQueue.main.async {
-                self.spaceEstimates = estimates
-                self.isLoading = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    self.spaceEstimates = estimates
+                    self.isLoading = false
+                }
             }
         }
     }
@@ -301,6 +366,7 @@ struct CleanupPresetsView: View {
         isLoading = true
         operationResult = nil
         showOperationResult = false
+        showApplyConfirmation = false
 
         DispatchQueue.global(qos: .userInitiated).async {
             // 应用预设到规则
@@ -323,10 +389,12 @@ struct CleanupPresetsView: View {
         // 预估空间
         let estimatedSpace = cleanupEngine.estimateCleanupSpace(rules: rules)
 
-        DispatchQueue.main.async {
-            self.operationResult = .estimation(space: estimatedSpace, preset: preset)
-            self.showOperationResult = true
-            self.isLoading = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            withAnimation(.easeInOut(duration: 0.3)) {
+                self.operationResult = .estimation(space: estimatedSpace, preset: preset)
+                self.showOperationResult = true
+                self.isLoading = false
+            }
         }
     }
 
@@ -366,13 +434,40 @@ struct CleanupPresetsView: View {
         try presetManager.saveCustomPreset(rules, name: name)
     }
 
+    private func updateCustomPreset(_ preset: CustomPreset, with rules: CleanupRules, name: String) throws {
+        var updatedPreset = preset
+        updatedPreset.rules = rules
+        updatedPreset.name = name
+        updatedPreset.lastUsedDate = Date()
+
+        // 先删除旧版本，再保存新版本
+        try presetManager.deleteCustomPreset(preset)
+        try presetManager.saveCustomPreset(rules, name: name)
+    }
+
     private func loadCustomPresets() -> [CustomPreset]? {
         return presetManager.loadCustomPresets()
     }
 
-    private func showSuccessMessage(_ message: String) {
-        // TODO: 实现成功消息提示
-        print("Success: \(message)")
+    private func deleteCustomPreset(_ preset: CustomPreset) {
+        do {
+            try presetManager.deleteCustomPreset(preset)
+
+            withAnimation(.easeInOut(duration: 0.3)) {
+                showDeleteConfirmation = false
+                deletingPreset = nil
+
+                // 如果删除的是当前选中的预设，取消选中
+                if selectedPreset == .custom {
+                    selectedPreset = nil
+                }
+            }
+
+            // 刷新自定义预设列表
+            loadSpaceEstimates()
+        } catch {
+            print("Error deleting preset: \(error)")
+        }
     }
 }
 
@@ -383,6 +478,9 @@ struct PresetCardView: View {
     let isSelected: Bool
     let estimatedSavings: Int64
     let onSelect: () -> Void
+
+    @State private var isPressed = false
+    @State private var isHovering = false
 
     private var riskLevel: RiskLevel {
         // 根据预设类型返回风险等级
@@ -416,6 +514,7 @@ struct PresetCardView: View {
                 Image(systemName: preset.iconName)
                     .font(.title2)
                     .foregroundColor(.accentColor)
+                    .scaleEffect(isPressed ? 0.9 : 1.0)
 
                 Text(preset.displayName)
                     .font(.headline)
@@ -425,6 +524,8 @@ struct PresetCardView: View {
                 if isSelected {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundColor(.accentColor)
+                        .scaleEffect(isSelected ? 1.0 : 0.8)
+                        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isSelected)
                 }
             }
 
@@ -459,15 +560,30 @@ struct PresetCardView: View {
         .padding()
         .background(
             RoundedRectangle(cornerRadius: 10)
-                .fill(isSelected ? Color.accentColor.opacity(0.1) : Color.secondary.opacity(0.05))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 2)
-                )
+                .fill(isHovering ? Color.accentColor.opacity(0.08) : Color.secondary.opacity(0.05))
+                .animation(.easeInOut(duration: 0.2), value: isHovering)
         )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: isSelected ? 2 : (isHovering ? 1 : 0))
+        )
+        .scaleEffect(isPressed ? 0.98 : (isHovering ? 1.02 : 1.0))
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isPressed)
         .contentShape(Rectangle())
         .onTapGesture {
             onSelect()
+        }
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in
+                    isPressed = true
+                }
+                .onEnded { _ in
+                    isPressed = false
+                }
+        )
+        .onHover { hovering in
+            isHovering = hovering
         }
     }
 }
@@ -481,10 +597,15 @@ struct CustomPresetRowView: View {
     let onEdit: () -> Void
     let onDelete: () -> Void
 
+    @State private var isHovering = false
+    @State private var isDeleting = false
+
     var body: some View {
         HStack {
             Image(systemName: "slider.horizontal.3")
                 .foregroundColor(.secondary)
+                .scaleEffect(isDeleting ? 0.8 : 1.0)
+                .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isDeleting)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(preset.name)
@@ -510,6 +631,8 @@ struct CustomPresetRowView: View {
                         .font(.caption)
                 }
                 .buttonStyle(.plain)
+                .scaleEffect(isHovering ? 1.1 : 1.0)
+                .animation(.spring(response: 0.2, dampingFraction: 0.8), value: isHovering)
 
                 Button(action: onDelete) {
                     Image(systemName: "trash")
@@ -517,17 +640,22 @@ struct CustomPresetRowView: View {
                         .foregroundColor(.red)
                 }
                 .buttonStyle(.plain)
+                .scaleEffect(isHovering ? 1.1 : 1.0)
+                .animation(.spring(response: 0.2, dampingFraction: 0.8), value: isHovering)
             }
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 12)
         .background(
             RoundedRectangle(cornerRadius: 8)
-                .fill(isSelected ? Color.accentColor.opacity(0.1) : Color.clear)
+                .fill(isSelected ? Color.accentColor.opacity(0.1) : (isHovering ? Color.secondary.opacity(0.05) : Color.clear))
         )
         .contentShape(Rectangle())
         .onTapGesture {
             onSelect()
+        }
+        .onHover { hovering in
+            isHovering = hovering
         }
     }
 
@@ -539,42 +667,110 @@ struct CustomPresetRowView: View {
     }
 }
 
-// MARK: - 自定义预设编辑器视图（占位符）
+// MARK: - 自定义预设编辑器视图
 
 struct CustomPresetEditorView: View {
+    let rules: CleanupRules
+    let presetName: String
+    let isEditing: Bool
     let onSave: (CleanupRules, String) -> Void
     let onCancel: () -> Void
 
-    @State private var presetName = ""
-    @State private var rules = CleanupRules()
+    @State private var name: String = ""
+    @State private var description: String = ""
+    @State private var tempRules: CleanupRules
+
+    init(rules: CleanupRules, presetName: String, isEditing: Bool, onSave: @escaping (CleanupRules, String) -> Void, onCancel: @escaping () -> Void) {
+        self.rules = rules
+        self.presetName = presetName
+        self.isEditing = isEditing
+        self.onSave = onSave
+        self.onCancel = onCancel
+        _tempRules = State(initialValue: rules)
+    }
 
     var body: some View {
         VStack(spacing: 20) {
-            Text("创建自定义预设")
+            Text(isEditing ? "编辑自定义预设" : "创建自定义预设")
                 .font(.headline)
 
             Form {
-                TextField("预设名称", text: $presetName)
+                TextField("预设名称", text: $name)
+                    .textFieldStyle(.roundedBorder)
 
-                // TODO: 添加自定义规则编辑器
-                Text("自定义预设编辑器功能待实现")
-                    .foregroundColor(.secondary)
+                TextField("描述（可选）", text: $description)
+                    .textFieldStyle(.roundedBorder)
+
+                Divider()
+
+                Text("清理规则设置")
+                    .font(.subheadline)
+
+                // 简化的规则编辑
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Text("自动清理低风险文件")
+                        Spacer()
+                        Toggle("", isOn: $tempRules.autoCleanLowRisk)
+                    }
+
+                    HStack {
+                        Text("确认中等风险文件")
+                        Spacer()
+                        Toggle("", isOn: $tempRules.confirmMediumRisk)
+                    }
+
+                    HStack {
+                        Text("永不删除高风险文件")
+                        Spacer()
+                        Toggle("", isOn: $tempRules.neverDeleteHighRisk)
+                    }
+
+                    Divider()
+
+                    HStack {
+                        Text("删除下载文件（天）")
+                        Spacer()
+                        TextField("", value: Binding(
+                            get: { String(tempRules.deleteRulesOlderThanDays) },
+                            set: { tempRules.deleteRulesOlderThanDays = Int($0) ?? tempRules.deleteDownloadsOlderThanDays }
+                        ))
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 60)
+                    }
+
+                    HStack {
+                        Text("删除日志文件（天）")
+                        Spacer()
+                        TextField("", value: Binding(
+                            get: { String(tempRules.deleteLogsOlderThanDays) },
+                            set: { tempRules.deleteLogsOlderThanDays = Int($0) ?? tempRules.deleteLogsOlderThanDays }
+                        ))
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 60)
+                    }
+                }
+                .font(.system(.body))
             }
-            .frame(height: 200)
+            .frame(height: 350)
 
             HStack {
                 Button("取消", role: .cancel, action: onCancel)
 
                 Spacer()
 
-                Button("保存") {
-                    onSave(rules, presetName)
+                Button(isEditing ? "保存更改" : "保存") {
+                    onSave(tempRules, name.isEmpty ? presetName : name)
                 }
-                .disabled(presetName.isEmpty)
+                .disabled(name.isEmpty && presetName.isEmpty)
             }
         }
         .padding()
-        .frame(width: 400, height: 300)
+        .frame(width: 450, height: 500)
+        .onAppear {
+            self.name = presetName
+            self.tempRules = rules
+        }
     }
 }
 

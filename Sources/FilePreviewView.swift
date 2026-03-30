@@ -11,6 +11,11 @@ struct FilePreviewView: View {
     @State private var previewError: String?
     @State private var isLoadingPreview = false
 
+    // 动画状态
+    @State private var isConfirming = false
+    @State private var isCancelling = false
+    @State private var warningShake = false
+
     var body: some View {
         VStack(spacing: 0) {
             // Header
@@ -18,6 +23,8 @@ struct FilePreviewView: View {
                 Image(systemName: iconName)
                     .font(.title2)
                     .foregroundColor(.accentColor)
+                    .scaleEffect(isConfirming ? 0.9 : 1.0)
+                    .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isConfirming)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(fileItem.name)
@@ -35,10 +42,20 @@ struct FilePreviewView: View {
                 Button(action: { isPresented = false }) {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundColor(.secondary)
+                        .scaleEffect(isCancelling ? 0.9 : 1.0)
                 }
                 .buttonStyle(.plain)
                 .help("Close dialog")
                 .accessibilityLabel("Close")
+                .onLongPressGesture {
+                    isCancelling = true
+                }
+                .onTapGesture {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        isPresented = false
+                    }
+                }
+                .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isCancelling)
             }
             .padding()
             .background(Color(NSColor.windowBackgroundColor))
@@ -79,8 +96,9 @@ struct FilePreviewView: View {
                                     .fontWeight(.medium)
                                 Spacer()
                                 Text(fileItem.riskLevel.rawValue)
-                                    .foregroundColor(riskColor)
+                                    .foregroundColor(riskColorAnimated)
                                     .fontWeight(.semibold)
+                                    .animation(.easeInOut(duration: 0.5), value: UUID())
                             }
 
                             HStack {
@@ -115,8 +133,6 @@ struct FilePreviewView: View {
                                 previewError = nil
                                 let previewer = FilePreviewer()
                                 previewer.showQuickLookPreview(for: fileItem.url)
-                                // Check if QuickLook panel actually appeared
-                                // We could add a timer to check, but for now just log
                             }) {
                                 HStack {
                                     Image(systemName: "eye.fill")
@@ -125,19 +141,34 @@ struct FilePreviewView: View {
                                 .frame(maxWidth: .infinity)
                             }
                             .help("Open this file in macOS QuickLook preview")
+                            .buttonStyle(.plain)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(Color.accentColor.opacity(0.1))
+                            )
                         }
                     }
 
                     // Warning
                     GroupBox {
                         VStack(alignment: .leading, spacing: 8) {
-                            Label("This file is classified as \(fileItem.riskLevel.rawValue) Risk", systemImage: "exclamationmark.triangle.fill")
-                                .foregroundColor(riskColor)
-                                .accessibilityLabel("Risk warning: \(fileItem.riskLevel.rawValue) risk file")
+                            HStack {
+                                Label("This file is classified as \(fileItem.riskLevel.rawValue) Risk", systemImage: "exclamationmark.triangle.fill")
+                                    .foregroundColor(riskColorAnimated)
+                                    .accessibilityLabel("Risk warning: \(fileItem.riskLevel.rawValue) risk file")
+                                Spacer()
+                            }
+                            .offset(x: warningShake ? 5 : 0)
+                            .animation(.spring(response: 0.2, dampingFraction: 0.6), value: warningShake)
 
                             Text("Are you sure you want to delete this file? This action cannot be undone.")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
+                        }
+                    }
+                    .onAppear {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7).delay(0.3)) {
+                            warningShake = true
                         }
                     }
 
@@ -166,14 +197,30 @@ struct FilePreviewView: View {
                 Button("Cancel", action: onCancel)
                     .keyboardShortcut(.escape)
                     .help("Cancel and close this dialog")
+                    .buttonStyle(.plain)
+                    .scaleEffect(isCancelling ? 0.95 : 1.0)
+                    .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isCancelling)
+                    .onLongPressGesture {
+                        isCancelling = true
+                    }
 
                 Spacer()
 
-                Button("Delete File", action: onConfirm)
+                Button("Delete File", action: {
+                    isConfirming = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        onConfirm()
+                    }
+                })
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
                     .tint(.red)
                     .help("Permanently delete this file")
+                    .scaleEffect(isConfirming ? 0.95 : 1.0)
+                    .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isConfirming)
+                    .onLongPressGesture {
+                        isConfirming = true
+                    }
             }
             .padding()
         }
@@ -198,6 +245,14 @@ struct FilePreviewView: View {
             return "archivebox.fill"
         case .binary, .unknown:
             return "doc.fill"
+        }
+    }
+
+    private var riskColorAnimated: Color {
+        switch fileItem.riskLevel {
+        case .low: return .green
+        case .medium: return .orange
+        case .high: return .red
         }
     }
 
