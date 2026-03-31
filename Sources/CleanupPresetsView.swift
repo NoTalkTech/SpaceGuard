@@ -694,7 +694,7 @@ struct CustomPresetEditorView: View {
             Text(isEditing ? "编辑自定义预设" : "创建自定义预设")
                 .font(.headline)
 
-            Form {
+            Form(content: {
                 TextField("预设名称", text: $name)
                     .textFieldStyle(.roundedBorder)
 
@@ -731,9 +731,9 @@ struct CustomPresetEditorView: View {
                     HStack {
                         Text("删除下载文件（天）")
                         Spacer()
-                        TextField("", value: Binding(
-                            get: { String(tempRules.deleteRulesOlderThanDays) },
-                            set: { tempRules.deleteRulesOlderThanDays = Int($0) ?? tempRules.deleteDownloadsOlderThanDays }
+                        TextField("", text: Binding(
+                            get: { String(tempRules.deleteDownloadsOlderThanDays) },
+                            set: { tempRules.deleteDownloadsOlderThanDays = Int($0) ?? tempRules.deleteDownloadsOlderThanDays }
                         ))
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 60)
@@ -742,7 +742,7 @@ struct CustomPresetEditorView: View {
                     HStack {
                         Text("删除日志文件（天）")
                         Spacer()
-                        TextField("", value: Binding(
+                        TextField("", text: Binding(
                             get: { String(tempRules.deleteLogsOlderThanDays) },
                             set: { tempRules.deleteLogsOlderThanDays = Int($0) ?? tempRules.deleteLogsOlderThanDays }
                         ))
@@ -751,7 +751,7 @@ struct CustomPresetEditorView: View {
                     }
                 }
                 .font(.system(.body))
-            }
+            })
             .frame(height: 350)
 
             HStack {
