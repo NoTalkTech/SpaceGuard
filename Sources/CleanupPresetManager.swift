@@ -1,7 +1,7 @@
 import Foundation
 
 /// 清理预设枚举
-public enum CleanupPreset: String, CaseIterable, Identifiable, Codable {
+public enum CleanupPreset: String, CaseIterable, Identifiable, Codable, Sendable {
     case safe = "safe"
     case developer = "developer"
     case advanced = "advanced"
