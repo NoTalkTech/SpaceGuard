@@ -1,5 +1,12 @@
 import Foundation
 
+/// File selection for batch cleanup
+struct FileSelection: Identifiable {
+    let id = UUID()
+    let file: FileItem
+    let shouldDelete: Bool
+}
+
 class CleanupEngine {
     private let riskAnalyzer = RiskAnalyzer()
     private let safetyChecker = SafetyChecker()
@@ -537,7 +544,7 @@ class CleanupEngine {
         let scanner = DiskScanner()
         var allFiles: [FileItem] = []
 
-        for includePath in rules.includeLocations {
+        for includePath in (rules.includeLocations.isEmpty ? [NSHomeDirectory()] : rules.includeLocations) {
             guard fileManager.fileExists(atPath: includePath) else { continue }
 
             do {
@@ -566,6 +573,62 @@ class CleanupEngine {
 
         // Step 5: Execute cleanup
         return await cleanupFiles(safeFiles, rules: rules, progress: progress, confirmAction: nil)
+    }
+
+    /// Perform batch cleanup with confirmed file selections
+    func performBatchCleanup(
+        selections: [FileSelection],
+        progress: @escaping (Int, Int, Int64) -> Void
+    ) async -> CleanupResult {
+        guard !isCleaning else {
+            return CleanupResult(filesDeleted: 0, spaceFreed: 0, duration: 0, errors: [])
+        }
+
+        isCleaning = true
+        cancellationToken = false
+        let startTime = Date()
+
+        defer {
+            isCleaning = false
+            cancellationToken = false
+        }
+
+        var filesDeleted = 0
+        var spaceFreed: Int64 = 0
+        var errors: [CleanupError] = []
+
+        let totalFiles = selections.count
+
+        for (index, selection) in selections.enumerated() {
+            if cancellationToken {
+                break
+            }
+
+            guard selection.shouldDelete else { continue }
+
+            do {
+                try deleteFile(selection.file)
+                filesDeleted += 1
+                spaceFreed += selection.file.size
+
+                // Update progress
+                progress(index + 1, totalFiles, spaceFreed)
+
+                // Small delay to avoid overwhelming system
+                try await Task.sleep(nanoseconds: 10_000_000) // 10ms
+
+            } catch {
+                errors.append(CleanupError(filePath: selection.file.path, error: error))
+            }
+        }
+
+        let duration = Date().timeIntervalSince(startTime)
+        return CleanupResult(
+            filesDeleted: filesDeleted,
+            spaceFreed: spaceFreed,
+            duration: duration,
+            errors: errors
+        )
     }
 
     /// Validate cleanup safety by checking various conditions

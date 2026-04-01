@@ -24,6 +24,12 @@ struct CleanupPresetsView: View {
     @State private var showDeleteConfirmation = false
     @State private var deletingPreset: CustomPreset?
 
+    // 批量清理确认
+    @State private var showCleanupConfirmation = false
+    @State private var cleanupFiles: [FileItem] = []
+    @State private var cleanupRules: CleanupRules?
+    @State private var scanTask: Task<Void, Never>?
+
     // 编辑预设
     @State private var editingPreset: CustomPreset?
 
@@ -85,6 +91,10 @@ struct CleanupPresetsView: View {
         .onAppear {
             loadSpaceEstimates()
         }
+        .onDisappear {
+            // 取消扫描任务
+            scanTask?.cancel()
+        }
         .sheet(isPresented: $showCustomPresetEditor) {
             CustomPresetEditorView(
                 rules: editingPreset?.rules ?? CleanupRules(),
@@ -130,6 +140,21 @@ struct CleanupPresetsView: View {
         } message: {
             if let preset = deletingPreset {
                 Text("确定要删除'\(preset.name)'预设吗？\n此操作无法撤销。")
+            }
+        }
+        .sheet(isPresented: $showCleanupConfirmation) {
+            if let rules = cleanupRules {
+                CleanupConfirmationView(
+                    files: cleanupFiles,
+                    rules: rules,
+                    onConfirm: { selections in
+                        performBatchCleanup(selections)
+                        showCleanupConfirmation = false
+                    },
+                    onCancel: {
+                        showCleanupConfirmation = false
+                    }
+                )
             }
         }
     }
@@ -399,35 +424,80 @@ struct CleanupPresetsView: View {
     }
 
     private func performCleanup(preset: CleanupPreset, rules: CleanupRules) {
-        // 执行清理
-        let group = DispatchGroup()
-        group.enter()
+        // 首先扫描文件，准备批量确认
+        scanTask = Task {
+            let scanner = DiskScanner()
+            var allFiles: [FileItem] = []
+
+            // 使用默认扫描路径或规则指定的路径
+            let scanPaths = rules.includeLocations.isEmpty ? [NSHomeDirectory()] : rules.includeLocations
+
+            for path in scanPaths {
+                guard FileManager.default.fileExists(atPath: path) else { continue }
+
+                do {
+                    let scanResult = try await scanner.scanDirectory(at: path) { _, _ in }
+                    let analyzer = RiskAnalyzer()
+                    let analyzedFiles = analyzer.analyzeFiles(scanResult.files, rules: rules)
+                    allFiles.append(contentsOf: analyzedFiles)
+                } catch {
+                    print("扫描错误: \(error)")
+                }
+            }
+
+            // 过滤符合规则的文件
+            let filteredFiles = allFiles.filter { file in
+                if file.riskLevel == .low && rules.autoCleanLowRisk {
+                    return true
+                }
+                if file.riskLevel == .medium && rules.confirmMediumRisk {
+                    return true
+                }
+                return false
+            }
+
+            // 在主线程显示批量确认对话框
+            DispatchQueue.main.async {
+                if filteredFiles.isEmpty {
+                    self.operationResult = .error(message: "没有找到符合条件的文件", preset: preset)
+                    self.showOperationResult = true
+                    self.isLoading = false
+                } else {
+                    self.cleanupFiles = filteredFiles
+                    self.cleanupRules = rules
+                    self.showCleanupConfirmation = true
+                    self.isLoading = false
+                }
+            }
+        }
+    }
+
+    private func performBatchCleanup(_ selections: [FileSelection]) {
+        isLoading = true
+        let activePreset = applyingPreset ?? selectedPreset
 
         Task {
-            let result = await cleanupEngine.performSafeCleanup(rules: rules) { current, total, freed in
-                // 进度更新可以在主线程处理
+            let result = await cleanupEngine.performBatchCleanup(selections: selections) { current, total, freed in
                 DispatchQueue.main.async {
-                    // 这里可以添加进度显示逻辑
-                    // 目前我们只记录日志
-                    print("清理进度: \(current)/\(total), 已释放: \(formatBytes(freed))")
+                    print("批量清理进度: \(current)/\(total), 已释放: \(formatBytes(freed))")
                 }
             }
 
             DispatchQueue.main.async {
                 if result.errors.isEmpty {
-                    self.operationResult = .cleanup(result: result, preset: preset)
+                    if let preset = activePreset {
+                        self.operationResult = .cleanup(result: result, preset: preset)
+                    }
                 } else {
                     let errorMessages = result.errors.map { $0.error.localizedDescription }.joined(separator: ", ")
-                    self.operationResult = .error(message: "清理过程中出现错误: \(errorMessages)", preset: preset)
+                    if let preset = activePreset {
+                        self.operationResult = .error(message: "清理过程中出现错误: \(errorMessages)", preset: preset)
+                    }
                 }
                 self.showOperationResult = true
                 self.isLoading = false
             }
-
-            group.leave()
         }
-
-        group.wait()
     }
 
     private func saveCustomPreset(_ rules: CleanupRules, name: String) throws {
