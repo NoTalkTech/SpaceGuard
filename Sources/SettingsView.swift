@@ -80,10 +80,6 @@ struct SettingsView: View {
                                     selectedTab = tab
                                 }
                             }
-                            .transition(.asymmetric(
-                                insertion: .move(edge: .trailing).combined(with: .opacity),
-                                removal: .move(edge: .leading).combined(with: .opacity)
-                            ))
                         }
                     }
                     .padding(.vertical, 8)
@@ -140,6 +136,11 @@ struct SettingsView: View {
                     )
                 }
             }
+            .transition(.asymmetric(
+                insertion: .move(edge: .trailing).combined(with: .opacity),
+                removal: .move(edge: .leading).combined(with: .opacity)
+            ))
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: selectedTab)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding()
             .background(Color(nsColor: .windowBackgroundColor))
@@ -375,6 +376,12 @@ private struct CleanupSettingsView: View {
     let diskStats: DiskStats?
     let loadDiskStats: () -> Void
 
+    // Batch cleanup confirmation
+    @State private var showQuickCleanupConfirmation = false
+    @State private var quickCleanupFiles: [FileItem] = []
+    @State private var isScanningForCleanup = false
+    private let cleanupEngine = CleanupEngine()
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
@@ -390,18 +397,16 @@ private struct CleanupSettingsView: View {
                                 await progressTracker.startScan()
                             }
                         }
-                        .disabled(progressTracker.isScanning)
+                        .disabled(progressTracker.isScanning || isScanningForCleanup)
                         .buttonStyle(.borderedProminent)
 
                         Button("Quick Cleanup") {
-                            Task {
-                                await progressTracker.quickCleanup(rules: rules)
-                            }
+                            startQuickCleanupScan()
                         }
-                        .disabled(progressTracker.isCleaning)
+                        .disabled(progressTracker.isCleaning || isScanningForCleanup)
                         .buttonStyle(.borderedProminent)
 
-                        if progressTracker.isScanning || progressTracker.isCleaning {
+                        if progressTracker.isScanning || progressTracker.isCleaning || isScanningForCleanup {
                             CleanupProgressView(
                                 progressTracker: progressTracker,
                                 onCancel: {
@@ -456,6 +461,96 @@ private struct CleanupSettingsView: View {
                 }
             }
             .padding()
+        }
+        .sheet(isPresented: $showQuickCleanupConfirmation) {
+            CleanupConfirmationView(
+                files: quickCleanupFiles,
+                rules: rules,
+                onConfirm: { selections in
+                    performQuickBatchCleanup(selections)
+                    showQuickCleanupConfirmation = false
+                },
+                onCancel: {
+                    showQuickCleanupConfirmation = false
+                }
+            )
+        }
+    }
+
+    private func startQuickCleanupScan() {
+        isScanningForCleanup = true
+
+        Task {
+            let scanner = DiskScanner()
+            var allFiles: [FileItem] = []
+
+            // Scan common cache locations
+            let cachePaths = [
+                NSHomeDirectory() + "/Library/Caches",
+                "/Library/Caches",
+                NSHomeDirectory() + "/Library/Logs",
+                "/var/tmp",
+                "/tmp"
+            ]
+
+            for path in cachePaths {
+                guard FileManager.default.fileExists(atPath: path) else { continue }
+
+                do {
+                    let scanResult = try await scanner.scanDirectory(at: path) { _, _ in }
+                    let analyzer = RiskAnalyzer()
+                    let analyzedFiles = analyzer.analyzeFiles(scanResult.files, rules: rules)
+                    allFiles.append(contentsOf: analyzedFiles)
+                } catch {
+                    print("扫描错误: \(error)")
+                }
+            }
+
+            // Filter for low-risk files
+            let lowRiskFiles = allFiles.filter { $0.riskLevel == .low }
+
+            DispatchQueue.main.async {
+                if lowRiskFiles.isEmpty {
+                    isScanningForCleanup = false
+                } else {
+                    quickCleanupFiles = lowRiskFiles
+                    showQuickCleanupConfirmation = true
+                    isScanningForCleanup = false
+                }
+            }
+        }
+    }
+
+    private func performQuickBatchCleanup(_ selections: [FileSelection]) {
+        Task {
+            let result = await cleanupEngine.performBatchCleanup(selections: selections) { current, total, freed in
+                DispatchQueue.main.async {
+                    // Update progress tracker for UI display
+                    progressTracker.filesProcessed = current
+                    progressTracker.totalFiles = total
+                    progressTracker.spaceFreed = freed
+                    progressTracker.currentProgress = Double(current) / Double(max(total, 1))
+                    progressTracker.currentStatus = "Cleaned \(current)/\(total) files, freed \(ByteCountFormatter.string(fromByteCount: freed, countStyle: .file))"
+                }
+            }
+
+            DispatchQueue.main.async {
+                progressTracker.currentStatus = "Quick cleanup complete: \(result.filesDeleted) files deleted, freed \(ByteCountFormatter.string(fromByteCount: result.spaceFreed, countStyle: .file))"
+                progressTracker.currentProgress = 1.0
+
+                // Record cleanup history
+                let record = CleanupHistoryRecord(
+                    id: UUID(),
+                    timestamp: Date(),
+                    cleanupType: .quick,
+                    filesDeleted: result.filesDeleted,
+                    spaceFreed: result.spaceFreed,
+                    duration: result.duration,
+                    errors: result.errors.count,
+                    wasCancelled: false
+                )
+                CleanupHistoryManager.shared.addRecord(record)
+            }
         }
     }
 
