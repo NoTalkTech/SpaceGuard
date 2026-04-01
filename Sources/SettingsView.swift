@@ -33,6 +33,8 @@ struct SettingsView: View {
         case diskInfo = "Disk Info"
         case advanced = "Advanced"
         case presetCleanup = "Preset Cleanup"
+        case history = "History"
+        case statistics = "Statistics"
 
         var icon: String {
             switch self {
@@ -43,6 +45,8 @@ struct SettingsView: View {
             case .diskInfo: return "internaldrive"
             case .advanced: return "slider.horizontal.3"
             case .presetCleanup: return "checklist"
+            case .history: return "clock.arrow.circlepath"
+            case .statistics: return "chart.bar.xaxis"
             }
         }
     }
@@ -124,6 +128,10 @@ struct SettingsView: View {
                     DiskInfoSettingsView(rules: $rules)
                 case .presetCleanup:
                     CleanupPresetsView()
+                case .history:
+                    CleanupHistoryView()
+                case .statistics:
+                    CleanupStatisticsView()
                 case .advanced:
                     AdvancedSettingsView(
                         rules: $rules,
@@ -394,19 +402,16 @@ private struct CleanupSettingsView: View {
                         .buttonStyle(.borderedProminent)
 
                         if progressTracker.isScanning || progressTracker.isCleaning {
-                            ProgressView(value: progressTracker.currentProgress) {
-                                Text(progressTracker.currentStatus)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-
-                            Button("Cancel") {
-                                if progressTracker.isScanning {
-                                    progressTracker.cancelScan()
-                                } else {
-                                    progressTracker.cancelCleanup()
+                            CleanupProgressView(
+                                progressTracker: progressTracker,
+                                onCancel: {
+                                    if progressTracker.isScanning {
+                                        progressTracker.cancelScan()
+                                    } else {
+                                        progressTracker.cancelCleanup()
+                                    }
                                 }
-                            }
-                            .buttonStyle(.bordered)
+                            )
                         }
                     }
                 }

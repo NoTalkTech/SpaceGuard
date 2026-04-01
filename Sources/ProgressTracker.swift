@@ -13,6 +13,7 @@ class ProgressTracker: ObservableObject {
 
     private var scanner: DiskScanner?
     private var cleanupEngine: CleanupEngine?
+    private let historyManager = CleanupHistoryManager.shared
 
     var confirmDeletion: ((FileItem) async -> Bool)? = nil
 
@@ -92,6 +93,19 @@ class ProgressTracker: ObservableObject {
             currentStatus += " (\(result.errors.count) errors)"
         }
 
+        // Record cleanup history
+        let record = CleanupHistoryRecord(
+            id: UUID(),
+            timestamp: Date(),
+            cleanupType: .manual,
+            filesDeleted: result.filesDeleted,
+            spaceFreed: result.spaceFreed,
+            duration: result.duration,
+            errors: result.errors.count,
+            wasCancelled: false
+        )
+        historyManager.addRecord(record)
+
         return result
     }
 
@@ -123,6 +137,19 @@ class ProgressTracker: ObservableObject {
         isCleaning = false
         currentStatus = "Quick cleanup complete: \(result.filesDeleted) files deleted, \(ByteCountFormatter.string(fromByteCount: result.spaceFreed, countStyle: .file)) freed"
         currentProgress = 1.0
+
+        // Record cleanup history
+        let record = CleanupHistoryRecord(
+            id: UUID(),
+            timestamp: Date(),
+            cleanupType: .quick,
+            filesDeleted: result.filesDeleted,
+            spaceFreed: result.spaceFreed,
+            duration: result.duration,
+            errors: result.errors.count,
+            wasCancelled: false
+        )
+        historyManager.addRecord(record)
 
         return result
     }
