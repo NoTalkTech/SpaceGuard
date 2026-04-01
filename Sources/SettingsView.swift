@@ -380,6 +380,7 @@ private struct CleanupSettingsView: View {
     @State private var showQuickCleanupConfirmation = false
     @State private var quickCleanupFiles: [FileItem] = []
     @State private var isScanningForCleanup = false
+    @State private var scanError: String? = nil
     private let cleanupEngine = CleanupEngine()
 
     var body: some View {
@@ -475,6 +476,16 @@ private struct CleanupSettingsView: View {
                 }
             )
         }
+        .alert("Quick Cleanup Error", isPresented: Binding(
+            get: { scanError != nil },
+            set: { if !$0 { scanError = nil } }
+        )) {
+            Button("OK") {
+                scanError = nil
+            }
+        } message: {
+            Text(scanError ?? "")
+        }
     }
 
     private func startQuickCleanupScan() {
@@ -502,7 +513,12 @@ private struct CleanupSettingsView: View {
                     let analyzedFiles = analyzer.analyzeFiles(scanResult.files, rules: rules)
                     allFiles.append(contentsOf: analyzedFiles)
                 } catch {
-                    print("扫描错误: \(error)")
+                    print("Scan error: \(error)")
+                    DispatchQueue.main.async {
+                        scanError = "Scan error: \(error.localizedDescription)"
+                        isScanningForCleanup = false
+                    }
+                    return
                 }
             }
 
@@ -510,12 +526,16 @@ private struct CleanupSettingsView: View {
             let lowRiskFiles = allFiles.filter { $0.riskLevel == .low }
 
             DispatchQueue.main.async {
-                if lowRiskFiles.isEmpty {
-                    isScanningForCleanup = false
+                isScanningForCleanup = false
+
+                if scanError != nil {
+                    // Error already set in catch block
+                } else if lowRiskFiles.isEmpty {
+                    scanError = "No low-risk files found to clean"
                 } else {
                     quickCleanupFiles = lowRiskFiles
                     showQuickCleanupConfirmation = true
-                    isScanningForCleanup = false
+                    scanError = nil
                 }
             }
         }
