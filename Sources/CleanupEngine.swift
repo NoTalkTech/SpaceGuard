@@ -420,17 +420,6 @@ class CleanupEngine {
         }
     }
 
-    private func shouldDeleteFile(_ file: FileItem, rules: CleanupRules) -> DeletionDecision {
-        // Check risk level rules
-        switch file.riskLevel {
-        case .high:
-            return rules.neverDeleteHighRisk ? .skip : .confirm
-        case .medium:
-            return rules.confirmMediumRisk ? .confirm : .skip
-        case .low:
-            return rules.autoCleanLowRisk ? .delete : .skip
-        }
-    }
 
     private func deleteFile(_ file: FileItem) throws {
         let url = file.url

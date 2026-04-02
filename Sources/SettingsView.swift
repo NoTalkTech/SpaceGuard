@@ -249,11 +249,6 @@ struct SettingsView: View {
         }
     }
 
-    private func validateRules() {
-        let cleanupEngine = CleanupEngine()
-        let (_, conflicts) = cleanupEngine.validateRules(rules)
-        ruleConflicts = conflicts
-    }
 }
 
 // MARK: - General Settings View
@@ -523,9 +518,7 @@ private struct CleanupSettingsView: View {
             DispatchQueue.main.async {
                 isScanningForCleanup = false
 
-                if scanError != nil {
-                    // Error already set in catch block
-                } else if lowRiskFiles.isEmpty {
+                if lowRiskFiles.isEmpty {
                     scanError = "No low-risk files found to clean"
                 } else {
                     quickCleanupFiles = lowRiskFiles

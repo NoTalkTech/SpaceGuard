@@ -239,12 +239,6 @@ struct CleanupTypeDistributionView: View {
     }
 
     private func color(for type: CleanupType) -> Color {
-        switch type {
-        case .quick: return .yellow
-        case .full: return .red
-        case .scheduled: return .purple
-        case .scenario: return .blue
-        case .manual: return .green
-        }
+        type.color
     }
 }
