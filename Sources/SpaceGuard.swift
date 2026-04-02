@@ -113,17 +113,70 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func quickCleanup() {
         Task {
-            showNotification(title: "Quick Cleanup", message: "Starting quick cleanup...")
+            showNotification(title: "Quick Cleanup", message: "Scanning for files to clean...")
 
             let rules = CleanupRules.load()
-            if let result = await progressTracker.quickCleanup(rules: rules) {
-                let formattedFreed = ByteCountFormatter.string(fromByteCount: result.spaceFreed, countStyle: .file)
-                showNotification(
-                    title: "Quick Cleanup Complete",
-                    message: "Freed \(formattedFreed) by deleting \(result.filesDeleted) files"
-                )
-            } else {
-                showNotification(title: "Quick Cleanup Failed", message: "Unable to complete cleanup")
+            let cleanupEngine = CleanupEngine()
+
+            // Scan cache locations
+            let scanner = DiskScanner()
+            var allFiles: [FileItem] = []
+
+            let cachePaths = [
+                NSHomeDirectory() + "/Library/Caches",
+                "/Library/Caches",
+                NSHomeDirectory() + "/Library/Logs",
+                "/var/tmp",
+                "/tmp"
+            ]
+
+            for path in cachePaths {
+                guard FileManager.default.fileExists(atPath: path) else { continue }
+
+                do {
+                    let scanResult = try await scanner.scanDirectory(at: path) { _, _ in }
+                    let analyzer = RiskAnalyzer()
+                    let analyzedFiles = analyzer.analyzeFiles(scanResult.files, rules: rules)
+                    allFiles.append(contentsOf: analyzedFiles)
+                } catch {
+                    print("Scan error: \(error)")
+                }
+            }
+
+            // Filter for low-risk files
+            let lowRiskFiles = allFiles.filter { $0.riskLevel == .low }
+
+            if lowRiskFiles.isEmpty {
+                showNotification(title: "Quick Cleanup", message: "No low-risk files found to clean")
+                return
+            }
+
+            // Create FileSelection array and perform batch cleanup
+            let selections = lowRiskFiles.map { FileSelection(file: $0, shouldDelete: true) }
+
+            showNotification(title: "Quick Cleanup", message: "Cleaning \(selections.count) files...")
+
+            let result = await cleanupEngine.performBatchCleanup(selections: selections) { _, _, _ in }
+
+            let formattedFreed = ByteCountFormatter.string(fromByteCount: result.spaceFreed, countStyle: .file)
+            showNotification(
+                title: "Quick Cleanup Complete",
+                message: "Freed \(formattedFreed) by deleting \(result.filesDeleted) files"
+            )
+
+            // Record cleanup history
+            let record = CleanupHistoryRecord(
+                id: UUID(),
+                timestamp: Date(),
+                cleanupType: .quick,
+                filesDeleted: result.filesDeleted,
+                spaceFreed: result.spaceFreed,
+                duration: result.duration,
+                errors: result.errors.count,
+                wasCancelled: false
+            )
+            await MainActor.run {
+                CleanupHistoryManager.shared.addRecord(record)
             }
         }
     }
