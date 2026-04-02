@@ -117,18 +117,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
             let rules = CleanupRules.load()
             let cleanupEngine = CleanupEngine()
-
-            // Scan cache locations
-            let scanner = DiskScanner()
+            var scanErrors: [Error] = []
             var allFiles: [FileItem] = []
 
-            let cachePaths = [
-                NSHomeDirectory() + "/Library/Caches",
-                "/Library/Caches",
-                NSHomeDirectory() + "/Library/Logs",
-                "/var/tmp",
-                "/tmp"
-            ]
+            // Use CleanupEngine's cache paths and scanning logic
+            let cachePaths = cleanupEngine.getQuickCleanupPaths()
+            let scanner = DiskScanner()
 
             for path in cachePaths {
                 guard FileManager.default.fileExists(atPath: path) else { continue }
@@ -139,8 +133,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     let analyzedFiles = analyzer.analyzeFiles(scanResult.files, rules: rules)
                     allFiles.append(contentsOf: analyzedFiles)
                 } catch {
+                    scanErrors.append(error)
                     print("Scan error: \(error)")
                 }
+            }
+
+            // Notify user if any scan errors occurred
+            if !scanErrors.isEmpty {
+                showNotification(
+                    title: "Quick Cleanup Warning",
+                    message: "Encountered \(scanErrors.count) error(s) while scanning, some files may not be included"
+                )
             }
 
             // Filter for low-risk files

@@ -485,18 +485,24 @@ class CleanupEngine {
         return (lowRiskSavings, mediumRiskSavings, highRiskSavings)
     }
 
+    /// Get the list of paths used for quick cleanup
+    func getQuickCleanupPaths() -> [String] {
+        return [
+            NSHomeDirectory() + "/Library/Caches",
+            "/Library/Caches",
+            NSHomeDirectory() + "/Library/Logs",
+            "/var/tmp",
+            "/tmp"
+        ]
+    }
+
     func quickCleanup(rules: CleanupRules, progress: @escaping (Int, Int, Int64) -> Void, confirmAction: ((FileItem) async -> Bool)? = nil) async -> CleanupResult {
         // Apply rule validation and priority management before processing
         var validatedRules = rules
         applyRulePriorityManagement(&validatedRules)
 
         // Identify common cache locations
-        let cachePaths = [
-            NSHomeDirectory() + "/Library/Caches",
-            "/Library/Caches",
-            "/var/tmp",
-            "/tmp"
-        ]
+        let cachePaths = getQuickCleanupPaths()
 
         var allFiles: [FileItem] = []
 
