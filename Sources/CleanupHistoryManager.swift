@@ -41,7 +41,7 @@ class CleanupHistoryManager: ObservableObject {
     func addRecord(_ record: CleanupHistoryRecord) {
         records.insert(record, at: 0)
 
-        // // Trim to max records
+        // Trim to max records
         if records.count > maxRecords {
             records = Array(records.prefix(maxRecords))
         }

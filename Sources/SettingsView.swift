@@ -495,14 +495,9 @@ private struct CleanupSettingsView: View {
             let scanner = DiskScanner()
             var allFiles: [FileItem] = []
 
-            // Scan common cache locations
-            let cachePaths = [
-                NSHomeDirectory() + "/Library/Caches",
-                "/Library/Caches",
-                NSHomeDirectory() + "/Library/Logs",
-                "/var/tmp",
-                "/tmp"
-            ]
+            // Scan common cache locations from CleanupEngine
+            let cleanupEngine = CleanupEngine()
+            let cachePaths = cleanupEngine.getQuickCleanupPaths()
 
             for path in cachePaths {
                 guard FileManager.default.fileExists(atPath: path) else { continue }
