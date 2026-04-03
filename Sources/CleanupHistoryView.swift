@@ -149,7 +149,7 @@ struct CleanupHistoryRowView: View {
             }
         }
         .padding(12)
-        .background(Color.secondary.opacity(0.05))
+        .background((Color.secondary).opacity(0.05))
         .cornerRadius(10)
     }
 }

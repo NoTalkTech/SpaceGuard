@@ -249,11 +249,6 @@ struct SettingsView: View {
         }
     }
 
-    private func validateRules() {
-        let cleanupEngine = CleanupEngine()
-        let (_, conflicts) = cleanupEngine.validateRules(rules)
-        ruleConflicts = conflicts
-    }
 }
 
 // MARK: - General Settings View
@@ -494,6 +489,7 @@ private struct CleanupSettingsView: View {
         Task {
             let scanner = DiskScanner()
             var allFiles: [FileItem] = []
+            var scanErrors: [Error] = []
 
             // Scan common cache locations from CleanupEngine
             let cleanupEngine = CleanupEngine()
@@ -509,23 +505,24 @@ private struct CleanupSettingsView: View {
                     allFiles.append(contentsOf: analyzedFiles)
                 } catch {
                     print("Scan error: \(error)")
-                    DispatchQueue.main.async {
-                        scanError = "Scan error: \(error.localizedDescription)"
-                        isScanningForCleanup = false
-                    }
-                    return
+                    scanErrors.append(error)
+                    // Continue scanning other paths instead of returning
                 }
             }
-
-            // Filter for low-risk files
-            let lowRiskFiles = allFiles.filter { $0.riskLevel == .low }
 
             DispatchQueue.main.async {
                 isScanningForCleanup = false
 
-                if scanError != nil {
-                    // Error already set in catch block
-                } else if lowRiskFiles.isEmpty {
+                // If there were scan errors, show them to the user
+                if !scanErrors.isEmpty {
+                    let errorCount = scanErrors.count
+                    scanError = "Encountered \(errorCount) error(s) while scanning, some files may not be included"
+                }
+
+                // Filter for low-risk files (only if no scan errors)
+                let lowRiskFiles = allFiles.filter { $0.riskLevel == .low }
+
+                if lowRiskFiles.isEmpty {
                     scanError = "No low-risk files found to clean"
                 } else {
                     quickCleanupFiles = lowRiskFiles

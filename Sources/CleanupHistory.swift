@@ -7,6 +7,16 @@ enum CleanupType: String, Codable, CaseIterable {
     case scheduled = "Scheduled Cleanup"
     case scenario = "Scenario Cleanup"
     case manual = "Manual Selection"
+
+    var colorHex: String {
+        switch self {
+        case .quick: return "#FFD700"
+        case .full: return "#FF6B6B"
+        case .scheduled: return "#9B59B6"
+        case .scenario: return "#3498DB"
+        case .manual: return "#2ECC71"
+        }
+    }
 }
 
 // MARK: - Cleanup History Record
@@ -52,13 +62,7 @@ struct CleanupHistoryRecord: Identifiable, Codable {
     }
 
     var iconColorHex: String {
-        switch cleanupType {
-        case .quick: return "#FFD700"
-        case .full: return "#FF6B6B"
-        case .scheduled: return "#9B59B6"
-        case .scenario: return "#3498DB"
-        case .manual: return "#2ECC71"
-        }
+        cleanupType.colorHex
     }
 }
 

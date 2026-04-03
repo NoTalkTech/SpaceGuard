@@ -420,17 +420,6 @@ class CleanupEngine {
         }
     }
 
-    private func shouldDeleteFile(_ file: FileItem, rules: CleanupRules) -> DeletionDecision {
-        // Check risk level rules
-        switch file.riskLevel {
-        case .high:
-            return rules.neverDeleteHighRisk ? .skip : .confirm
-        case .medium:
-            return rules.confirmMediumRisk ? .confirm : .skip
-        case .low:
-            return rules.autoCleanLowRisk ? .delete : .skip
-        }
-    }
 
     private func deleteFile(_ file: FileItem) throws {
         let url = file.url
@@ -486,6 +475,22 @@ class CleanupEngine {
     }
 
     /// Get the list of paths used for quick cleanup
+    ///
+    /// This method returns a curated list of cache and temporary directories that are
+    /// typically safe to clean during a quick cleanup operation. The paths are selected
+    /// based on the following principles:
+    /// 1. **User cache directories** (`~/Library/Caches`) - Application-specific caches
+    ///    that can be regenerated and typically contain low-risk files
+    /// 2. **System cache directories** (`/Library/Caches`) - Shared system caches
+    ///    used by multiple applications
+    /// 3. **Log directories** (`~/Library/Logs`) - Application logs that are often
+    ///    safe to remove but may affect debugging
+    /// 4. **Temporary directories** (`/tmp`, `/var/tmp`) - System-wide temporary files
+    ///    that are often safe to delete
+    ///
+    /// The paths are ordered with user-specific directories first, as they are
+    /// generally safer to clean. System directories are included because they often
+    /// accumulate large amounts of temporary data but require careful risk assessment.
     func getQuickCleanupPaths() -> [String] {
         return [
             NSHomeDirectory() + "/Library/Caches",
@@ -505,6 +510,7 @@ class CleanupEngine {
         let cachePaths = getQuickCleanupPaths()
 
         var allFiles: [FileItem] = []
+        var scanErrors: [CleanupError] = []
 
         for path in cachePaths {
             guard fileManager.fileExists(atPath: path) else {
@@ -519,13 +525,24 @@ class CleanupEngine {
                 allFiles.append(contentsOf: analyzedFiles)
             } catch {
                 print("Error scanning \(path): \(error)")
+                scanErrors.append(CleanupError(filePath: path, error: error))
             }
         }
 
         // Filter for low-risk files only
         let lowRiskFiles = allFiles.filter { $0.riskLevel == .low }
 
-        return await cleanupFiles(lowRiskFiles, rules: validatedRules, progress: progress, confirmAction: confirmAction)
+        let cleanupResult = await cleanupFiles(lowRiskFiles, rules: validatedRules, progress: progress, confirmAction: confirmAction)
+
+        // Combine scan errors with cleanup errors
+        let combinedErrors = scanErrors + cleanupResult.errors
+
+        return CleanupResult(
+            filesDeleted: cleanupResult.filesDeleted,
+            spaceFreed: cleanupResult.spaceFreed,
+            duration: cleanupResult.duration,
+            errors: combinedErrors
+        )
     }
 
     // MARK: - Scenario-Based Cleanup Methods
