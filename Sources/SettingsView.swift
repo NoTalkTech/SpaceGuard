@@ -517,7 +517,6 @@ private struct CleanupSettingsView: View {
                 if !scanErrors.isEmpty {
                     let errorCount = scanErrors.count
                     scanError = "Encountered \(errorCount) error(s) while scanning, some files may not be included"
-                    return
                 }
 
                 // Filter for low-risk files (only if no scan errors)
