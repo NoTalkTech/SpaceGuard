@@ -239,6 +239,7 @@ struct CleanupTypeDistributionView: View {
     }
 
     private func color(for type: CleanupType) -> Color {
-        type.color
+        Color(hex: type.colorHex)
     }
 }
+

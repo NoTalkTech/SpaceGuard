@@ -489,6 +489,7 @@ private struct CleanupSettingsView: View {
         Task {
             let scanner = DiskScanner()
             var allFiles: [FileItem] = []
+            var scanErrors: [Error] = []
 
             // Scan common cache locations from CleanupEngine
             let cleanupEngine = CleanupEngine()
@@ -504,19 +505,23 @@ private struct CleanupSettingsView: View {
                     allFiles.append(contentsOf: analyzedFiles)
                 } catch {
                     print("Scan error: \(error)")
-                    DispatchQueue.main.async {
-                        scanError = "Scan error: \(error.localizedDescription)"
-                        isScanningForCleanup = false
-                    }
-                    return
+                    scanErrors.append(error)
+                    // Continue scanning other paths instead of returning
                 }
             }
 
-            // Filter for low-risk files
-            let lowRiskFiles = allFiles.filter { $0.riskLevel == .low }
-
             DispatchQueue.main.async {
                 isScanningForCleanup = false
+
+                // If there were scan errors, show them to the user
+                if !scanErrors.isEmpty {
+                    let errorCount = scanErrors.count
+                    scanError = "Encountered \(errorCount) error(s) while scanning, some files may not be included"
+                    return
+                }
+
+                // Filter for low-risk files (only if no scan errors)
+                let lowRiskFiles = allFiles.filter { $0.riskLevel == .low }
 
                 if lowRiskFiles.isEmpty {
                     scanError = "No low-risk files found to clean"

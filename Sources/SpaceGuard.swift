@@ -117,50 +117,43 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
             let rules = CleanupRules.load()
             let cleanupEngine = CleanupEngine()
-            var scanErrors: [Error] = []
-            var allFiles: [FileItem] = []
 
-            // Use CleanupEngine's cache paths and scanning logic
-            let cachePaths = cleanupEngine.getQuickCleanupPaths()
-            let scanner = DiskScanner()
+            // Use CleanupEngine's quickCleanup method to eliminate code duplication
+            // The progress callback is minimal since we show separate notifications
+            let result = await cleanupEngine.quickCleanup(
+                rules: rules,
+                progress: { current, total, freed in
+                    // Progress callback - could be used for more detailed progress updates
+                    // but we're using notifications instead
+                },
+                confirmAction: nil
+            )
 
-            for path in cachePaths {
-                guard FileManager.default.fileExists(atPath: path) else { continue }
+            // Handle scan and cleanup errors
+            if !result.errors.isEmpty {
+                // Check if there are scan errors (errors with directory paths)
+                let scanErrorCount = result.errors.filter { error in
+                    // Simple heuristic: if error filePath is one of the quick cleanup paths
+                    let quickPaths = cleanupEngine.getQuickCleanupPaths()
+                    return quickPaths.contains(error.filePath)
+                }.count
 
-                do {
-                    let scanResult = try await scanner.scanDirectory(at: path) { _, _ in }
-                    let analyzer = RiskAnalyzer()
-                    let analyzedFiles = analyzer.analyzeFiles(scanResult.files, rules: rules)
-                    allFiles.append(contentsOf: analyzedFiles)
-                } catch {
-                    scanErrors.append(error)
-                    print("Scan error: \(error)")
+                if scanErrorCount > 0 {
+                    showNotification(
+                        title: "Quick Cleanup Warning",
+                        message: "Encountered \(scanErrorCount) error(s) while scanning, some files may not be included"
+                    )
                 }
             }
 
-            // Notify user if any scan errors occurred
-            if !scanErrors.isEmpty {
-                showNotification(
-                    title: "Quick Cleanup Warning",
-                    message: "Encountered \(scanErrors.count) error(s) while scanning, some files may not be included"
-                )
-            }
-
-            // Filter for low-risk files
-            let lowRiskFiles = allFiles.filter { $0.riskLevel == .low }
-
-            if lowRiskFiles.isEmpty {
+            // Check if any files were cleaned
+            if result.filesDeleted == 0 {
+                // Could be due to no low-risk files found or all files skipped
                 showNotification(title: "Quick Cleanup", message: "No low-risk files found to clean")
                 return
             }
 
-            // Create FileSelection array and perform batch cleanup
-            let selections = lowRiskFiles.map { FileSelection(file: $0, shouldDelete: true) }
-
-            showNotification(title: "Quick Cleanup", message: "Cleaning \(selections.count) files...")
-
-            let result = await cleanupEngine.performBatchCleanup(selections: selections) { _, _, _ in }
-
+            // Show completion notification
             let formattedFreed = ByteCountFormatter.string(fromByteCount: result.spaceFreed, countStyle: .file)
             showNotification(
                 title: "Quick Cleanup Complete",

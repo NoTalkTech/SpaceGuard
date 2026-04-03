@@ -1,5 +1,4 @@
 import Foundation
-import SwiftUI
 
 // MARK: - Cleanup Operation Type
 enum CleanupType: String, Codable, CaseIterable {
@@ -8,16 +7,6 @@ enum CleanupType: String, Codable, CaseIterable {
     case scheduled = "Scheduled Cleanup"
     case scenario = "Scenario Cleanup"
     case manual = "Manual Selection"
-
-    var color: Color {
-        switch self {
-        case .quick: return .yellow
-        case .full: return .red
-        case .scheduled: return .purple
-        case .scenario: return .blue
-        case .manual: return .green
-        }
-    }
 
     var colorHex: String {
         switch self {
