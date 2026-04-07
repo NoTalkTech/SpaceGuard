@@ -87,7 +87,7 @@ struct CleanupPresetsView: View {
             Spacer()
         }
         .padding()
-        .frame(minWidth: 600, minHeight: 400)
+        .frame(minWidth: 500, minHeight: 400)
         .onAppear {
             loadSpaceEstimates()
         }
