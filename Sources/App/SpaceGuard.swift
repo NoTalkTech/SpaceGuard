@@ -18,8 +18,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var menu: NSMenu!
     var settingsWindow: NSWindow?
     private var diskStats: DiskStats?
-    @MainActor private var progressTracker = ProgressTracker()
+    @MainActor private lazy var dependencies = AppDependencies()
     private let filePreviewer = FilePreviewer()
+
+    @MainActor private var progressTracker: ProgressTracker {
+        dependencies.progressTracker
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupStatusBar()
@@ -116,28 +120,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             showNotification(title: "Quick Cleanup", message: "Scanning for files to clean...")
 
             let rules = CleanupRules.load()
-            let cleanupEngine = CleanupEngine()
+            let engine = await dependencies.cleanupEngine
 
-            // Use CleanupEngine's quickCleanup method to eliminate code duplication
-            // The progress callback is minimal since we show separate notifications
-            let result = await cleanupEngine.quickCleanup(
+            let result = await engine.quickCleanup(
                 rules: rules,
-                progress: { current, total, freed in
-                    // Progress callback - could be used for more detailed progress updates
-                    // but we're using notifications instead
-                },
+                progress: { _, _, _ in },
                 confirmAction: nil
             )
 
-            // Handle scan and cleanup errors
             if !result.errors.isEmpty {
-                // Check if there are scan errors (errors with directory paths)
-                let scanErrorCount = result.errors.filter { error in
-                    // Simple heuristic: if error filePath is one of the quick cleanup paths
-                    let quickPaths = cleanupEngine.getQuickCleanupPaths()
-                    return quickPaths.contains(error.filePath)
-                }.count
-
+                let quickPaths = engine.getQuickCleanupPaths()
+                let scanErrorCount = result.errors.filter { quickPaths.contains($0.filePath) }.count
                 if scanErrorCount > 0 {
                     showNotification(
                         title: "Quick Cleanup Warning",
@@ -146,21 +139,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
 
-            // Check if any files were cleaned
             if result.filesDeleted == 0 {
-                // Could be due to no low-risk files found or all files skipped
                 showNotification(title: "Quick Cleanup", message: "No low-risk files found to clean")
                 return
             }
 
-            // Show completion notification
             let formattedFreed = ByteCountFormatter.string(fromByteCount: result.spaceFreed, countStyle: .file)
             showNotification(
                 title: "Quick Cleanup Complete",
                 message: "Freed \(formattedFreed) by deleting \(result.filesDeleted) files"
             )
 
-            // Record cleanup history
             let record = CleanupHistoryRecord(
                 id: UUID(),
                 timestamp: Date(),
@@ -172,14 +161,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 wasCancelled: false
             )
             await MainActor.run {
-                CleanupHistoryManager.shared.addRecord(record)
+                dependencies.historyManager.addRecord(record)
             }
         }
     }
 
     func updateDiskInfo() {
-        let scanner = DiskScanner()
-        diskStats = scanner.getDiskUsage()
+        diskStats = dependencies.scanner.getDiskUsage()
 
         // Update menu item
         if let diskItem = menu.item(at: 0) {
@@ -195,6 +183,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func openSettings() {
         if settingsWindow == nil {
             let settingsView = SettingsView()
+                .environmentObject(dependencies.historyManager)
             let window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 700, height: 500),
                 styleMask: [.titled, .closable, .miniaturizable, .resizable],

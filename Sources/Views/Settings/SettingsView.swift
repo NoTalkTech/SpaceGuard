@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct SettingsView: View {
+    @EnvironmentObject var historyManager: CleanupHistoryManager
     @StateObject private var progressTracker = ProgressTracker()
     @State private var rules = CleanupRules.load()
     @State private var diskStats: DiskStats?
@@ -108,7 +109,8 @@ struct SettingsView: View {
                         progressTracker: progressTracker,
                         rules: rules,
                         diskStats: diskStats,
-                        loadDiskStats: loadDiskStats
+                        loadDiskStats: loadDiskStats,
+                        historyManager: historyManager
                     )
                 case .fileTypes:
                     FileTypesSettingsView(
@@ -125,9 +127,9 @@ struct SettingsView: View {
                 case .presetCleanup:
                     CleanupPresetsView()
                 case .history:
-                    CleanupHistoryView()
+                    CleanupHistoryView(historyManager: historyManager)
                 case .statistics:
-                    CleanupStatisticsView()
+                    CleanupStatisticsView(historyManager: historyManager)
                 case .advanced:
                     AdvancedSettingsView(
                         rules: $rules,
@@ -229,8 +231,8 @@ struct SettingsView: View {
 
     private func saveRules() {
         // Validate rules before saving
-        let cleanupEngine = CleanupEngine()
-        let (_, conflicts) = cleanupEngine.ruleManager.validateRules(rules)
+        let ruleManager = RuleManager()
+        let (_, conflicts) = ruleManager.validateRules(rules)
         ruleConflicts = conflicts
 
         if !conflicts.isEmpty {
@@ -254,5 +256,6 @@ struct SettingsView: View {
 struct SettingsView_Previews: PreviewProvider {
     static var previews: some View {
         SettingsView()
+            .environmentObject(CleanupHistoryManager.shared)
     }
 }

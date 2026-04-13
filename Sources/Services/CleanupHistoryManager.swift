@@ -12,7 +12,7 @@ class CleanupHistoryManager: ObservableObject {
     private let historyKey = "cleanupHistory"
     private let maxRecords = 100
 
-    private init() {}
+    init() {}
 
     // MARK: - Persistence
 
