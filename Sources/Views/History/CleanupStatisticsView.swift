@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct CleanupStatisticsView: View {
-    @ObservedObject private var historyManager = CleanupHistoryManager.shared
+    @ObservedObject var historyManager: CleanupHistoryManager
 
     private var statistics: CleanupStatistics? {
         if historyManager.records.isEmpty {

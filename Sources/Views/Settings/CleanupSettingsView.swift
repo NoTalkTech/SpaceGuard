@@ -6,6 +6,7 @@ struct CleanupSettingsView: View {
     let rules: CleanupRules
     let diskStats: DiskStats?
     let loadDiskStats: () -> Void
+    let historyManager: CleanupHistoryManager
 
     // Batch cleanup confirmation
     @State private var showQuickCleanupConfirmation = false
@@ -127,8 +128,6 @@ struct CleanupSettingsView: View {
             var allFiles: [FileItem] = []
             var scanErrors: [Error] = []
 
-            // Scan common cache locations from CleanupEngine
-            let cleanupEngine = CleanupEngine()
             let cachePaths = cleanupEngine.getQuickCleanupPaths()
 
             for path in cachePaths {
@@ -197,7 +196,7 @@ struct CleanupSettingsView: View {
                     errors: result.errors.count,
                     wasCancelled: false
                 )
-                CleanupHistoryManager.shared.addRecord(record)
+                historyManager.addRecord(record)
             }
         }
     }

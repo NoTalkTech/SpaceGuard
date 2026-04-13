@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct CleanupHistoryView: View {
-    @ObservedObject private var historyManager = CleanupHistoryManager.shared
+    @ObservedObject var historyManager: CleanupHistoryManager
     @State private var selectedRecord: CleanupHistoryRecord?
     @State private var showingDeleteConfirmation = false
     @State private var recordToDelete: CleanupHistoryRecord?

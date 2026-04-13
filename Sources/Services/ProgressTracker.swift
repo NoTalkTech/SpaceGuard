@@ -11,11 +11,24 @@ class ProgressTracker: ObservableObject {
     @Published var totalFiles: Int = 0
     @Published var spaceFreed: Int64 = 0
 
-    private var scanner: DiskScanner?
-    private var cleanupEngine: CleanupEngine?
-    private let historyManager = CleanupHistoryManager.shared
+    private let scannerFactory: () -> DiskScannerProtocol
+    private let engineFactory: () -> CleanupEngineProtocol
+    private let historyManager: CleanupHistoryManager
+
+    private var scanner: DiskScannerProtocol?
+    private var cleanupEngine: CleanupEngineProtocol?
 
     var confirmDeletion: ((FileItem) async -> Bool)? = nil
+
+    init(
+        scannerFactory: @escaping () -> DiskScannerProtocol = { DiskScanner() },
+        engineFactory: @escaping () -> CleanupEngineProtocol = { CleanupEngine() },
+        historyManager: CleanupHistoryManager = .shared
+    ) {
+        self.scannerFactory = scannerFactory
+        self.engineFactory = engineFactory
+        self.historyManager = historyManager
+    }
 
     func startScan(path: String = NSHomeDirectory()) async -> DiskScanner.ScanResult? {
         guard !isScanning else { return nil }
@@ -28,10 +41,11 @@ class ProgressTracker: ObservableObject {
         totalFiles = 0
         spaceFreed = 0
 
-        scanner = DiskScanner()
+        let newScanner = scannerFactory()
+        scanner = newScanner
 
         do {
-            let result = try await scanner!.scanDirectory(at: path) { [weak self] processed, totalSize in
+            let result = try await newScanner.scanDirectory(at: path) { [weak self] processed, totalSize in
                 guard let self = self else { return }
 
                 Task { @MainActor in
@@ -71,9 +85,10 @@ class ProgressTracker: ObservableObject {
         totalFiles = files.count
         spaceFreed = 0
 
-        cleanupEngine = CleanupEngine()
+        let engine = engineFactory()
+        cleanupEngine = engine
 
-        let result = await cleanupEngine!.cleanupFiles(files, rules: rules, progress: { [weak self] processed, total, freed in
+        let result = await engine.cleanupFiles(files, rules: rules, progress: { [weak self] processed, total, freed in
             guard let self = self else { return }
 
             Task { @MainActor in
@@ -120,9 +135,10 @@ class ProgressTracker: ObservableObject {
         totalFiles = 0
         spaceFreed = 0
 
-        cleanupEngine = CleanupEngine()
+        let engine = engineFactory()
+        cleanupEngine = engine
 
-        let result = await cleanupEngine!.quickCleanup(rules: rules, progress: { [weak self] processed, total, freed in
+        let result = await engine.quickCleanup(rules: rules, progress: { [weak self] processed, total, freed in
             guard let self = self else { return }
 
             Task { @MainActor in

@@ -193,11 +193,10 @@ class CleanupEngine {
                 continue
             }
 
-            let scanner = DiskScanner()
             do {
+                let scanner = DiskScanner()
                 let result = try await scanner.scanDirectory(at: path) { _, _ in }
-                let analyzer = RiskAnalyzer()
-                let analyzedFiles = analyzer.analyzeFiles(result.files, rules: validatedRules)
+                let analyzedFiles = riskAnalyzer.analyzeFiles(result.files, rules: validatedRules)
                 allFiles.append(contentsOf: analyzedFiles)
             } catch {
                 print("Error scanning \(path): \(error)")
@@ -240,7 +239,6 @@ class CleanupEngine {
         print("Estimated cleanup space: \(deleter.formatBytes(estimatedSpace))")
 
         // Step 3: Scan for files using rules
-        let scanner = DiskScanner()
         var allFiles: [FileItem] = []
         let fm = FileManager.default
 
@@ -248,11 +246,11 @@ class CleanupEngine {
             guard fm.fileExists(atPath: includePath) else { continue }
 
             do {
+                let scanner = DiskScanner()
                 let scanResult = try await scanner.scanDirectory(at: includePath) { scanned, total in
                     progress(0, 1, 0) // Update progress during scan
                 }
-                let analyzer = RiskAnalyzer()
-                let analyzedFiles = analyzer.analyzeFiles(scanResult.files, rules: rules)
+                let analyzedFiles = riskAnalyzer.analyzeFiles(scanResult.files, rules: rules)
                 allFiles.append(contentsOf: analyzedFiles)
             } catch {
                 // Continue with other paths
@@ -433,16 +431,15 @@ class CleanupEngine {
         } else {
             // For file-based scenarios, scan and delete files
             var allFiles: [FileItem] = []
-            let scanner = DiskScanner()
             let fm = FileManager.default
 
             for path in result.detectedPaths {
                 guard fm.fileExists(atPath: path) else { continue }
 
                 do {
+                    let scanner = DiskScanner()
                     let scanResult = try await scanner.scanDirectory(at: path) { _, _ in }
-                    let analyzer = RiskAnalyzer()
-                    let analyzedFiles = analyzer.analyzeFiles(scanResult.files, rules: rules)
+                    let analyzedFiles = riskAnalyzer.analyzeFiles(scanResult.files, rules: rules)
                     allFiles.append(contentsOf: analyzedFiles)
                 } catch {
                     continue
