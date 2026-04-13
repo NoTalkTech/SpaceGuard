@@ -230,7 +230,7 @@ struct SettingsView: View {
     private func saveRules() {
         // Validate rules before saving
         let cleanupEngine = CleanupEngine()
-        let (_, conflicts) = cleanupEngine.validateRules(rules)
+        let (_, conflicts) = cleanupEngine.ruleManager.validateRules(rules)
         ruleConflicts = conflicts
 
         if !conflicts.isEmpty {
