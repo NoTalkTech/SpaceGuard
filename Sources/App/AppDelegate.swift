@@ -75,23 +75,34 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem.separator())
 
         // Quick actions
-        menu.addItem(NSMenuItem(title: "Analyze Disk", action: #selector(analyzeDisk), keyEquivalent: "a"))
-        menu.addItem(NSMenuItem(title: "Quick Cleanup", action: #selector(quickCleanup), keyEquivalent: "q"))
+        let analyzeItem = NSMenuItem(title: "Analyze Disk", action: #selector(analyzeDisk), keyEquivalent: "a")
+        analyzeItem.target = self
+        menu.addItem(analyzeItem)
+
+        let cleanupItem = NSMenuItem(title: "Quick Cleanup", action: #selector(quickCleanup), keyEquivalent: "q")
+        cleanupItem.target = self
+        menu.addItem(cleanupItem)
 
         menu.addItem(NSMenuItem.separator())
 
         // Settings
-        menu.addItem(NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ","))
+        let settingsItem = NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ",")
+        settingsItem.target = self
+        menu.addItem(settingsItem)
 
         menu.addItem(NSMenuItem.separator())
 
         // Quit
-        menu.addItem(NSMenuItem(title: "Quit SpaceGuard", action: #selector(quitApp), keyEquivalent: "q"))
+        let quitItem = NSMenuItem(title: "Quit SpaceGuard", action: #selector(quitApp), keyEquivalent: "q")
+        quitItem.target = self
+        menu.addItem(quitItem)
 
         statusItem.menu = menu
     }
 
     @objc func analyzeDisk() {
+        presentSettings(selecting: .cleanup)
+
         Task {
             showNotification(title: "Disk Analysis", message: "Starting disk analysis...")
 
@@ -108,6 +119,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func quickCleanup() {
+        presentSettings(selecting: .cleanup)
+
         Task {
             showNotification(title: "Quick Cleanup", message: "Scanning for files to clean...")
 
@@ -173,9 +186,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func openSettings() {
+        presentSettings(selecting: .general)
+    }
+
+    @MainActor
+    private func presentSettings(selecting tab: SettingsView.SidebarTab) {
+        let settingsView = SettingsView(
+            progressTracker: dependencies.progressTracker,
+            initialTab: tab
+        )
+        .environmentObject(dependencies.historyManager)
+
         if settingsWindow == nil {
-            let settingsView = SettingsView()
-                .environmentObject(dependencies.historyManager)
             let window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 700, height: 500),
                 styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -190,6 +212,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
             settingsWindow = window
         }
+
+        settingsWindow?.contentView = NSHostingView(rootView: settingsView)
 
         settingsWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)

@@ -1,87 +1,97 @@
 # SpaceGuard
 
-SpaceGuard is a macOS menu bar app for disk cleanup with explicit risk controls.
+SpaceGuard is a macOS menu bar cleanup app built around one constraint: cleanup must stay explainable and reversible enough that users can trust it.
 
-It combines two cleanup modes:
+The app combines:
 
-- Rule-based scanning for general file cleanup
-- Scenario-based cleanup for known cache locations such as JetBrains, Homebrew, npm, pip, wallpaper cache, and Trash
+- rule-driven scanning for general cleanup
+- scenario-driven cleanup for known cache locations
+- explicit risk classification before deletion
+- a review UI that stays usable even when the candidate set is very large
 
-The app is built as a Swift Package Manager executable and uses native macOS APIs only.
+It is implemented as a Swift Package Manager executable and uses native macOS APIs.
 
-## What It Does
-
-- Monitors disk usage from the menu bar
-- Scans files and assigns a risk level: low, medium, or high
-- Auto-cleans low-risk files
-- Requires confirmation for medium-risk files
-- Blocks deletion of high-risk files
-- Supports presets for common cleanup strategies
-- Tracks cleanup history
-- Provides dedicated cleanup scenarios for developer and system caches
-
-## Risk Model
+## Core Product Model
 
 SpaceGuard treats deletion as a safety problem first.
 
-- Low risk: caches, temporary files, Trash, known disposable app data
-- Medium risk: old downloads, logs, user data that may be recoverable but should be reviewed
-- High risk: system files, application bundles, critical user data, explicitly protected paths
+- Low risk: caches, temporary files, disposable app data
+- Medium risk: items that may be safe but should be reviewed
+- High risk: system files, application bundles, protected or critical data
 
-The exact behavior is controlled by `CleanupRules`, custom overrides, include/exclude paths, file type rules, and scenario-specific safeguards.
+Cleanup behavior is driven by:
 
-## Architecture
+- `CleanupRules`
+- include and exclude paths
+- file type rules
+- custom risk overrides
+- built-in cleanup presets
+- scenario-specific safeguards
 
-The codebase is organized around a small app shell and a service-heavy core:
+## Main User Flows
 
-- `Sources/App`
-  - app entry point
-  - menu bar lifecycle
-  - settings window and notifications
-- `Sources/Models`
-  - `CleanupRules`
-  - cleanup presets and scenarios
-  - history records, rule conflicts, scheduling metadata
-- `Sources/Services`
-  - `DiskScanner` for file discovery and disk stats
-  - `RiskAnalyzer` for risk classification and assessment
-  - `CleanupScenariosDetector` for known cache locations
-  - `CleanupPresetManager` for preset composition
-  - `ProgressTracker` for scan and cleanup state
-  - persistence and history services
-- `Sources/Services/Engine`
-  - `CleanupEngine`
-  - `DeletionDecider`
-  - `RuleManager`
-  - `FileDeleter`
-- `Sources/Views`
-  - settings tabs
-  - cleanup dialogs
-  - preset UI
-  - history and shared components
+### Status Bar Actions
 
-At a high level, the main flow is:
+The menu bar exposes a minimal foreground workflow:
 
-1. `DiskScanner` discovers files
-2. `RiskAnalyzer` assigns risk and assessment metadata
-3. `RuleManager` validates and resolves rule conflicts
-4. `DeletionDecider` determines whether a file should be skipped, confirmed, or deleted
-5. `CleanupEngine` executes cleanup and records results
+- `Analyze Disk`
+- `Quick Cleanup`
+- `Settings...`
 
-## Cleanup Presets
+`Analyze Disk` and `Quick Cleanup` now route into the `Cleanup` settings tab so the user sees:
+
+- live progress
+- terminal status text
+- in-window completion banners
+
+This avoids a dead-feeling UX when macOS notifications are unavailable or ignored.
+
+### Settings-Driven Cleanup
+
+The main settings window contains tabs for:
+
+- General
+- Cleanup
+- File Types
+- Risk Management
+- Disk Info
+- Advanced
+- Preset Cleanup
+- History
+- Statistics
+
+The `Cleanup` tab is the operational control center for scan and quick cleanup.
+
+### Cleanup Confirmation
+
+The cleanup confirmation flow is designed for large result sets.
+
+It supports:
+
+- per-risk grouping
+- directory-first review mode
+- file-level review mode
+- search and sorting
+- paged loading instead of rendering every row at once
+- inline directory expansion to inspect files in place
+- directory utility actions such as `Open` and `Copy Path`
+
+This prevents the app from collapsing under very large candidate lists while still letting the user inspect what will be removed.
+
+### Preset Cleanup
 
 Built-in presets currently include:
 
 - `safe`: conservative cleanup for most users
-- `developer`: focuses on developer caches and logs
-- `advanced`: broad cleanup across all supported scenarios
-- `custom`: user-defined preset rules
+- `developer`: developer cache focused cleanup
+- `advanced`: broader cleanup across supported scenarios
+- `custom`: user-defined rules
 
-Presets are merged into the active rule set rather than replacing the entire configuration blindly.
+Presets are merged into the active rule set instead of blindly replacing the entire configuration.
 
 ## Supported Cleanup Scenarios
 
-The scenario system currently detects or cleans:
+The scenario layer currently covers:
 
 - Trash
 - macOS wallpaper cache
@@ -92,54 +102,38 @@ The scenario system currently detects or cleans:
 - npm cache
 - pip cache
 
-Some scenarios are path-based. Others use command-line cleanup flows where appropriate.
+Some scenarios are path based. Others rely on workflow-specific cleanup logic.
 
-## Requirements
+## Architecture
 
-- macOS 12 or newer
-- Swift 5.9 or newer
-- Xcode 15 or newer if you want IDE support
+The codebase is a small app shell over a service-heavy core.
 
-## Build
+- `Sources/App`
+  - menu bar lifecycle
+  - settings window creation
+  - top-level app wiring via `AppDelegate` and `AppDependencies`
+- `Sources/Models`
+  - rules, presets, scenarios, file metadata, history, safety metadata
+- `Sources/Services`
+  - scanning, risk analysis, history, persistence, estimation, previewing
+- `Sources/Services/Engine`
+  - cleanup execution, deletion decisions, rule conflict handling
+- `Sources/Views`
+  - settings tabs
+  - cleanup confirmation and progress UI
+  - preset management UI
+  - history/statistics UI
+  - shared rows and sections
 
-```bash
-git clone https://github.com/NoTalkTech/SpaceGuard.git
-cd SpaceGuard
-swift build
-```
+At a high level:
 
-Run tests:
-
-```bash
-swift test
-```
-
-## Run
-
-For local development:
-
-```bash
-swift run
-```
-
-This launches the menu bar app from the SwiftPM build output.
-
-## Packaging
-
-The `scripts/` directory contains helper scripts for app distribution:
-
-- `scripts/create-app-bundle.sh`: create a `.app` bundle from the SwiftPM build
-- `scripts/install.sh`: install interactively into `/Applications`
-- `scripts/sign.sh`: sign the generated app bundle
-- `scripts/make-dmg.sh`: build a DMG for distribution
-- `scripts/IconGenerator.swift`: generate app icons
-
-Example:
-
-```bash
-./scripts/create-app-bundle.sh
-./scripts/install.sh
-```
+1. `DiskScanner` discovers files and disk usage
+2. `RiskAnalyzer` assigns risk and reason metadata
+3. `RuleManager` validates and resolves rule conflicts
+4. `DeletionDecider` decides skip vs confirm vs delete
+5. `CleanupEngine` executes cleanup
+6. `CleanupHistoryManager` records completed operations
+7. `ProgressTracker` exposes scan/cleanup state to the UI
 
 ## Project Layout
 
@@ -161,16 +155,76 @@ SpaceGuard/
 │       ├── Settings/
 │       └── Shared/
 ├── Tests/
+├── docs/
 └── scripts/
 ```
 
-## Notes For Contributors
+## Requirements
 
-- The app is a SwiftPM executable target, not an Xcode project-based app.
-- Core cleanup logic lives in `Services` and `Services/Engine`; UI code should stay thin.
-- `CleanupRules` is the center of rule-driven behavior.
-- Scenario cleanup and rule-driven cleanup coexist; changes should keep both flows coherent.
-- Prefer adding tests at the service layer when modifying cleanup logic.
+- macOS 12 or newer
+- Swift 5.9 or newer
+- Xcode 15 or newer for IDE development
+
+## Build And Run
+
+```bash
+git clone https://github.com/NoTalkTech/SpaceGuard.git
+cd SpaceGuard
+swift build
+swift run
+```
+
+`swift run` launches the menu bar app from the SwiftPM build output.
+
+If you want to launch the generated app bundle directly:
+
+```bash
+open /Users/biyu.huang/code/SpaceGuard/SpaceGuard.app
+```
+
+## Validation
+
+Run the full test suite:
+
+```bash
+swift test
+```
+
+Run the most relevant targeted tests for menu-bar-triggered cleanup state:
+
+```bash
+swift test --filter 'SpaceGuardTests\.(CleanupPresetManagerTests|ProgressTrackerTests)'
+```
+
+For manual regression of the status bar actions and cleanup confirmation flow, see:
+
+- [docs/status-bar-regression.md](docs/status-bar-regression.md)
+
+## Packaging
+
+The `scripts/` directory contains helper scripts for distribution:
+
+- `scripts/create-app-bundle.sh`
+- `scripts/install.sh`
+- `scripts/sign.sh`
+- `scripts/make-dmg.sh`
+- `scripts/IconGenerator.swift`
+
+Example:
+
+```bash
+./scripts/create-app-bundle.sh
+./scripts/install.sh
+```
+
+## Contributor Notes
+
+- This is a SwiftPM executable target, not an Xcode project-based app target.
+- Keep UI thin. Most behavior should stay in `Services` and `Services/Engine`.
+- `CleanupRules` remains the center of rule-driven behavior.
+- Rule-based cleanup and scenario-based cleanup must stay coherent.
+- If you touch operational flows, validate both the foreground UI and the underlying state transitions.
+- Prefer tests at the service or state-management layer when possible.
 
 ## License
 

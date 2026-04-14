@@ -10,18 +10,18 @@ struct CustomPresetRowView: View {
     let onDelete: () -> Void
 
     @State private var isHovering = false
-    @State private var isDeleting = false
 
     var body: some View {
-        HStack {
+        HStack(spacing: 12) {
             Image(systemName: "slider.horizontal.3")
-                .foregroundColor(.secondary)
-                .scaleEffect(isDeleting ? 0.8 : 1.0)
-                .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isDeleting)
+                .foregroundColor(.accentColor)
+                .frame(width: 32, height: 32)
+                .background(Color.accentColor.opacity(0.1))
+                .cornerRadius(8)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(preset.name)
-                    .font(.subheadline)
+                    .font(.system(size: 14, weight: .semibold))
 
                 if let description = preset.description {
                     Text(description)
@@ -30,9 +30,9 @@ struct CustomPresetRowView: View {
                         .lineLimit(1)
                 }
 
-                Text("创建于 \(formatDate(preset.createdDate))")
+                Text("Created \(formatDate(preset.createdDate))")
                     .font(.caption2)
-                    .foregroundColor(.secondary.opacity(0.7))
+                    .foregroundColor(.secondary)
             }
 
             Spacer()
@@ -43,8 +43,7 @@ struct CustomPresetRowView: View {
                         .font(.caption)
                 }
                 .buttonStyle(.plain)
-                .scaleEffect(isHovering ? 1.1 : 1.0)
-                .animation(.spring(response: 0.2, dampingFraction: 0.8), value: isHovering)
+                .foregroundColor(.secondary)
 
                 Button(action: onDelete) {
                     Image(systemName: "trash")
@@ -52,15 +51,19 @@ struct CustomPresetRowView: View {
                         .foregroundColor(.red)
                 }
                 .buttonStyle(.plain)
-                .scaleEffect(isHovering ? 1.1 : 1.0)
-                .animation(.spring(response: 0.2, dampingFraction: 0.8), value: isHovering)
             }
         }
-        .padding(.vertical, 8)
-        .padding(.horizontal, 12)
+        .padding(12)
         .background(
             RoundedRectangle(cornerRadius: 8)
-                .fill(isSelected ? Color.accentColor.opacity(0.1) : (isHovering ? Color.secondary.opacity(0.05) : Color.clear))
+                .fill(isSelected ? Color.accentColor.opacity(0.08) : Color.secondary.opacity(0.05))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(
+                    isSelected ? Color.accentColor.opacity(0.8) : Color.secondary.opacity(isHovering ? 0.14 : 0.06),
+                    lineWidth: 1
+                )
         )
         .contentShape(Rectangle())
         .onTapGesture {

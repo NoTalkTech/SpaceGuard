@@ -1,8 +1,9 @@
 import SwiftUI
 
+@MainActor
 struct SettingsView: View {
     @EnvironmentObject var historyManager: CleanupHistoryManager
-    @StateObject private var progressTracker = ProgressTracker()
+    @StateObject private var progressTracker: ProgressTracker
     @State private var rules = RulesPersistenceService().loadRules()
     @State private var diskStats: DiskStats?
 
@@ -25,6 +26,16 @@ struct SettingsView: View {
 
     // Sidebar selection
     @State private var selectedTab: SidebarTab = .general
+
+    init(progressTracker: ProgressTracker, initialTab: SidebarTab = .general) {
+        _progressTracker = StateObject(wrappedValue: progressTracker)
+        _selectedTab = State(initialValue: initialTab)
+    }
+
+    init(initialTab: SidebarTab = .general) {
+        _progressTracker = StateObject(wrappedValue: ProgressTracker())
+        _selectedTab = State(initialValue: initialTab)
+    }
 
     enum SidebarTab: String, CaseIterable {
         case general = "General"

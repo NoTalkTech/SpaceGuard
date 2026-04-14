@@ -24,37 +24,37 @@ struct CustomPresetEditorView: View {
 
     var body: some View {
         VStack(spacing: 20) {
-            Text(isEditing ? "编辑自定义预设" : "创建自定义预设")
+            Text(isEditing ? "Edit Custom Preset" : "Create Custom Preset")
                 .font(.headline)
 
             Form(content: {
-                TextField("预设名称", text: $name)
+                TextField("Preset Name", text: $name)
                     .textFieldStyle(.roundedBorder)
 
-                TextField("描述（可选）", text: $description)
+                TextField("Description (Optional)", text: $description)
                     .textFieldStyle(.roundedBorder)
 
                 Divider()
 
-                Text("清理规则设置")
+                Text("Cleanup Rules")
                     .font(.subheadline)
 
                 // 简化的规则编辑
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
-                        Text("自动清理低风险文件")
+                        Text("Auto-clean low risk files")
                         Spacer()
                         Toggle("", isOn: $tempRules.autoCleanLowRisk)
                     }
 
                     HStack {
-                        Text("确认中等风险文件")
+                        Text("Confirm medium risk files")
                         Spacer()
                         Toggle("", isOn: $tempRules.confirmMediumRisk)
                     }
 
                     HStack {
-                        Text("永不删除高风险文件")
+                        Text("Never delete high risk files")
                         Spacer()
                         Toggle("", isOn: $tempRules.neverDeleteHighRisk)
                     }
@@ -62,7 +62,7 @@ struct CustomPresetEditorView: View {
                     Divider()
 
                     HStack {
-                        Text("删除下载文件（天）")
+                        Text("Delete downloads older than (days)")
                         Spacer()
                         TextField("", text: Binding(
                             get: { String(tempRules.deleteDownloadsOlderThanDays) },
@@ -73,7 +73,7 @@ struct CustomPresetEditorView: View {
                     }
 
                     HStack {
-                        Text("删除日志文件（天）")
+                        Text("Delete logs older than (days)")
                         Spacer()
                         TextField("", text: Binding(
                             get: { String(tempRules.deleteLogsOlderThanDays) },
@@ -88,11 +88,11 @@ struct CustomPresetEditorView: View {
             .frame(height: 350)
 
             HStack {
-                Button("取消", role: .cancel, action: onCancel)
+                Button("Cancel", role: .cancel, action: onCancel)
 
                 Spacer()
 
-                Button(isEditing ? "保存更改" : "保存") {
+                Button(isEditing ? "Save Changes" : "Save") {
                     onSave(tempRules, name.isEmpty ? presetName : name)
                 }
                 .disabled(name.isEmpty && presetName.isEmpty)
