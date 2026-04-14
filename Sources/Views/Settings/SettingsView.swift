@@ -1,8 +1,19 @@
 import SwiftUI
 
+@MainActor
+final class SettingsNavigationState: ObservableObject {
+    @Published var selectedTab: SettingsView.SidebarTab
+
+    init(selectedTab: SettingsView.SidebarTab = .general) {
+        self.selectedTab = selectedTab
+    }
+}
+
+@MainActor
 struct SettingsView: View {
     @EnvironmentObject var historyManager: CleanupHistoryManager
-    @StateObject private var progressTracker = ProgressTracker()
+    @StateObject private var progressTracker: ProgressTracker
+    @ObservedObject private var navigationState: SettingsNavigationState
     @State private var rules = RulesPersistenceService().loadRules()
     @State private var diskStats: DiskStats?
 
@@ -23,8 +34,23 @@ struct SettingsView: View {
     @State private var ruleConflicts: [RuleConflict] = []
     @State private var showRuleConflicts = false
 
-    // Sidebar selection
-    @State private var selectedTab: SidebarTab = .general
+    init(
+        progressTracker: ProgressTracker,
+        navigationState: SettingsNavigationState
+    ) {
+        _progressTracker = StateObject(wrappedValue: progressTracker)
+        self.navigationState = navigationState
+    }
+
+    init(navigationState: SettingsNavigationState) {
+        _progressTracker = StateObject(wrappedValue: ProgressTracker())
+        self.navigationState = navigationState
+    }
+
+    init() {
+        _progressTracker = StateObject(wrappedValue: ProgressTracker())
+        self.navigationState = SettingsNavigationState()
+    }
 
     enum SidebarTab: String, CaseIterable {
         case general = "General"
@@ -71,14 +97,14 @@ struct SettingsView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .background(
                                 RoundedRectangle(cornerRadius: 6)
-                                    .fill(selectedTab == tab ? Color.accentColor.opacity(0.2) : Color.clear)
-                                    .animation(.easeInOut(duration: 0.2), value: selectedTab)
+                                    .fill(navigationState.selectedTab == tab ? Color.accentColor.opacity(0.2) : Color.clear)
+                                    .animation(.easeInOut(duration: 0.2), value: navigationState.selectedTab)
                             )
                             .cornerRadius(6)
                             .contentShape(Rectangle())
                             .onTapGesture {
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                    selectedTab = tab
+                                    navigationState.selectedTab = tab
                                 }
                             }
                         }
@@ -95,7 +121,7 @@ struct SettingsView: View {
 
             // Content area
             Group {
-                switch selectedTab {
+                switch navigationState.selectedTab {
                 case .general:
                     GeneralSettingsView(
                         rules: $rules,
@@ -142,7 +168,7 @@ struct SettingsView: View {
                 insertion: .move(edge: .trailing).combined(with: .opacity),
                 removal: .move(edge: .leading).combined(with: .opacity)
             ))
-            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: selectedTab)
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: navigationState.selectedTab)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding()
             .background(Color(nsColor: .windowBackgroundColor))

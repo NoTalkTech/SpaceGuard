@@ -2,6 +2,28 @@ import SwiftUI
 
 // MARK: - Cleanup Settings View
 struct CleanupSettingsView: View {
+    private enum BannerTone {
+        case success
+        case warning
+        case error
+
+        var color: Color {
+            switch self {
+            case .success: return .green
+            case .warning: return .orange
+            case .error: return .red
+            }
+        }
+
+        var icon: String {
+            switch self {
+            case .success: return "checkmark.circle.fill"
+            case .warning: return "exclamationmark.triangle.fill"
+            case .error: return "xmark.octagon.fill"
+            }
+        }
+    }
+
     @ObservedObject var progressTracker: ProgressTracker
     let rules: CleanupRules
     let diskStats: DiskStats?
@@ -13,6 +35,9 @@ struct CleanupSettingsView: View {
     @State private var quickCleanupFiles: [FileItem] = []
     @State private var isScanningForCleanup = false
     @State private var scanError: String? = nil
+    @State private var bannerMessage: String?
+    @State private var bannerTone: BannerTone = .success
+    @State private var bannerToken = UUID()
     private let cleanupEngine = CleanupEngine()
 
     var body: some View {
@@ -118,6 +143,32 @@ struct CleanupSettingsView: View {
         } message: {
             Text(scanError ?? "")
         }
+        .onChange(of: progressTracker.currentStatus) { status in
+            showBannerIfNeeded(for: status)
+        }
+        .overlay(alignment: .top) {
+            if let bannerMessage {
+                HStack(spacing: 8) {
+                    Image(systemName: bannerTone.icon)
+                        .foregroundColor(bannerTone.color)
+
+                    Text(bannerMessage)
+                        .font(.caption)
+                        .foregroundColor(.primary)
+
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(.regularMaterial)
+                .cornerRadius(8)
+                .shadow(radius: 2)
+                .padding(.top, 12)
+                .padding(.horizontal, 16)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: bannerMessage)
     }
 
     private func startQuickCleanupScan() {
@@ -208,5 +259,36 @@ struct CleanupSettingsView: View {
         case .critical: return .red
         case .full: return .purple
         }
+    }
+
+    private func showBannerIfNeeded(for status: String) {
+        guard let tone = bannerTone(for: status) else { return }
+
+        bannerTone = tone
+        bannerMessage = status
+
+        let token = UUID()
+        bannerToken = token
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+            guard bannerToken == token else { return }
+            bannerMessage = nil
+        }
+    }
+
+    private func bannerTone(for status: String) -> BannerTone? {
+        if status.hasPrefix("Scan complete") || status.hasPrefix("Cleanup complete") || status.hasPrefix("Quick cleanup complete") {
+            return .success
+        }
+
+        if status.hasPrefix("Scan failed") {
+            return .error
+        }
+
+        if status.hasSuffix("cancelled") {
+            return .warning
+        }
+
+        return nil
     }
 }

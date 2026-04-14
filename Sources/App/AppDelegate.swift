@@ -9,6 +9,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var settingsWindow: NSWindow?
     private var diskStats: DiskStats?
     @MainActor private lazy var dependencies = AppDependencies()
+    @MainActor private let settingsNavigationState = SettingsNavigationState()
     private let filePreviewer = FilePreviewer()
 
     @MainActor private var progressTracker: ProgressTracker {
@@ -75,23 +76,34 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem.separator())
 
         // Quick actions
-        menu.addItem(NSMenuItem(title: "Analyze Disk", action: #selector(analyzeDisk), keyEquivalent: "a"))
-        menu.addItem(NSMenuItem(title: "Quick Cleanup", action: #selector(quickCleanup), keyEquivalent: "q"))
+        let analyzeItem = NSMenuItem(title: "Analyze Disk", action: #selector(analyzeDisk), keyEquivalent: "a")
+        analyzeItem.target = self
+        menu.addItem(analyzeItem)
+
+        let cleanupItem = NSMenuItem(title: "Quick Cleanup", action: #selector(quickCleanup), keyEquivalent: "q")
+        cleanupItem.target = self
+        menu.addItem(cleanupItem)
 
         menu.addItem(NSMenuItem.separator())
 
         // Settings
-        menu.addItem(NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ","))
+        let settingsItem = NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ",")
+        settingsItem.target = self
+        menu.addItem(settingsItem)
 
         menu.addItem(NSMenuItem.separator())
 
         // Quit
-        menu.addItem(NSMenuItem(title: "Quit SpaceGuard", action: #selector(quitApp), keyEquivalent: "q"))
+        let quitItem = NSMenuItem(title: "Quit SpaceGuard", action: #selector(quitApp), keyEquivalent: "q")
+        quitItem.target = self
+        menu.addItem(quitItem)
 
         statusItem.menu = menu
     }
 
     @objc func analyzeDisk() {
+        presentSettings(selecting: .cleanup)
+
         Task {
             showNotification(title: "Disk Analysis", message: "Starting disk analysis...")
 
@@ -108,20 +120,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func quickCleanup() {
+        presentSettings(selecting: .cleanup)
+
         Task {
             showNotification(title: "Quick Cleanup", message: "Scanning for files to clean...")
 
             let rules = RulesPersistenceService().loadRules()
-            let engine = dependencies.cleanupEngine
-
-            let result = await engine.quickCleanup(
-                rules: rules,
-                progress: { _, _, _ in },
-                confirmAction: nil
-            )
+            guard let result = await progressTracker.quickCleanup(rules: rules) else {
+                showNotification(title: "Quick Cleanup", message: "Cleanup is already in progress")
+                return
+            }
 
             if !result.errors.isEmpty {
-                let quickPaths = engine.getQuickCleanupPaths()
+                let quickPaths = dependencies.cleanupEngine.getQuickCleanupPaths()
                 let scanErrorCount = result.errors.filter { quickPaths.contains($0.filePath) }.count
                 if scanErrorCount > 0 {
                     showNotification(
@@ -141,20 +152,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 title: "Quick Cleanup Complete",
                 message: "Freed \(formattedFreed) by deleting \(result.filesDeleted) files"
             )
-
-            let record = CleanupHistoryRecord(
-                id: UUID(),
-                timestamp: Date(),
-                cleanupType: .quick,
-                filesDeleted: result.filesDeleted,
-                spaceFreed: result.spaceFreed,
-                duration: result.duration,
-                errors: result.errors.count,
-                wasCancelled: false
-            )
-            await MainActor.run {
-                dependencies.historyManager.addRecord(record)
-            }
         }
     }
 
@@ -173,9 +170,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func openSettings() {
+        presentSettings(selecting: .general)
+    }
+
+    @MainActor
+    private func presentSettings(selecting tab: SettingsView.SidebarTab) {
+        settingsNavigationState.selectedTab = tab
+
         if settingsWindow == nil {
-            let settingsView = SettingsView()
-                .environmentObject(dependencies.historyManager)
+            let settingsView = SettingsView(
+                progressTracker: dependencies.progressTracker,
+                navigationState: settingsNavigationState
+            )
+            .environmentObject(dependencies.historyManager)
             let window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 700, height: 500),
                 styleMask: [.titled, .closable, .miniaturizable, .resizable],

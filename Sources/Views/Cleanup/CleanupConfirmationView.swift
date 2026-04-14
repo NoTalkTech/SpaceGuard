@@ -13,6 +13,7 @@ struct CleanupConfirmationView: View {
     @State private var customFileSelections: [UUID: Bool] = [:]
     @State private var showingDetails = false
     @State private var expandedRiskLevel: RiskLevel?
+    @State private var displayMode: RiskLevelSection.DisplayMode = .directories
 
     private var riskGroups: [RiskLevel: [FileItem]] {
         Dictionary(grouping: files) { $0.riskLevel }
@@ -72,6 +73,7 @@ struct CleanupConfirmationView: View {
                             files: lowRiskFiles,
                             isSelected: lowRiskSelected,
                             isExpanded: expandedRiskLevel == .low,
+                            displayMode: displayMode,
                             onToggle: {
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                                     lowRiskSelected.toggle()
@@ -91,6 +93,7 @@ struct CleanupConfirmationView: View {
                             files: mediumRiskFiles,
                             isSelected: mediumRiskSelected,
                             isExpanded: expandedRiskLevel == .medium,
+                            displayMode: displayMode,
                             onToggle: {
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                                     mediumRiskSelected.toggle()
@@ -110,6 +113,7 @@ struct CleanupConfirmationView: View {
                             files: highRiskFiles,
                             isSelected: highRiskSelected,
                             isExpanded: expandedRiskLevel == .high,
+                            displayMode: displayMode,
                             onToggle: {
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                                     highRiskSelected.toggle()
@@ -167,6 +171,14 @@ struct CleanupConfirmationView: View {
                     .font(.headline)
 
                 Spacer()
+
+                Picker("View", selection: $displayMode) {
+                    ForEach(RiskLevelSection.DisplayMode.allCases) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 220)
 
                 Text("\(files.count) files")
                     .font(.subheadline)

@@ -4,13 +4,14 @@ struct FileRowView: View {
     let file: FileItem
 
     var body: some View {
-        HStack {
+        HStack(alignment: .top, spacing: 10) {
             Image(systemName: fileIcon)
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .frame(width: 20)
+                .padding(.top, 2)
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(file.name)
                     .font(.caption)
                     .lineLimit(1)
@@ -19,11 +20,21 @@ struct FileRowView: View {
                     .font(.caption2)
                     .foregroundColor(.secondary)
                     .lineLimit(1)
+
+                HStack(spacing: 8) {
+                    Label(file.formattedModified, systemImage: "clock")
+                        .lineLimit(1)
+
+                    Text(file.reason)
+                        .lineLimit(1)
+                }
+                .font(.caption2)
+                .foregroundColor(.secondary.opacity(0.9))
             }
 
             Spacer()
 
-            HStack(spacing: 8) {
+            VStack(alignment: .trailing, spacing: 6) {
                 Text(formatBytes(file.size))
                     .font(.caption)
                     .monospacedDigit()
@@ -37,7 +48,7 @@ struct FileRowView: View {
                     .foregroundColor(riskColor)
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 6)
         .padding(.horizontal, 8)
         .background(
             RoundedRectangle(cornerRadius: 4)

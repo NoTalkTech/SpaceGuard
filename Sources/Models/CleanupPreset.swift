@@ -12,10 +12,10 @@ public enum CleanupPreset: String, CaseIterable, Identifiable, Codable, Sendable
     /// 预设显示名称
     var displayName: String {
         switch self {
-        case .safe: return "安全清理"
-        case .developer: return "开发者清理"
-        case .advanced: return "高级清理"
-        case .custom: return "自定义"
+        case .safe: return "Safe Cleanup"
+        case .developer: return "Developer Cleanup"
+        case .advanced: return "Advanced Cleanup"
+        case .custom: return "Custom"
         }
     }
 
@@ -23,13 +23,13 @@ public enum CleanupPreset: String, CaseIterable, Identifiable, Codable, Sendable
     var description: String {
         switch self {
         case .safe:
-            return "仅清理低风险缓存和临时文件，适合大多数用户"
+            return "Only removes low-risk cache and temporary files. Recommended for most users."
         case .developer:
-            return "清理开发工具缓存（JetBrains、npm、pip等），适合开发者"
+            return "Cleans development tool caches such as JetBrains, npm, and pip. Intended for developers."
         case .advanced:
-            return "全面清理包括废纸篓和系统缓存，适合高级用户"
+            return "Performs a broader cleanup including Trash and system caches. Intended for advanced users."
         case .custom:
-            return "用户自定义的清理规则"
+            return "User-defined cleanup rules."
         }
     }
 

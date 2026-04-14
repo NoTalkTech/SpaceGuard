@@ -250,8 +250,8 @@ final class CleanupPresetManagerTests: XCTestCase {
         let safePreset = CleanupPreset.safe
 
         XCTAssertEqual(safePreset.id, "safe")
-        XCTAssertEqual(safePreset.displayName, "安全清理")
-        XCTAssertEqual(safePreset.description, "仅清理低风险缓存和临时文件，适合大多数用户")
+        XCTAssertEqual(safePreset.displayName, "Safe Cleanup")
+        XCTAssertEqual(safePreset.description, "Only removes low-risk cache and temporary files. Recommended for most users.")
         XCTAssertEqual(safePreset.iconName, "shield.checkered")
 
         // 验证包含的场景

@@ -45,14 +45,14 @@ struct CleanupPresetsView: View {
         var description: String {
             switch self {
             case .estimation(let space, let preset):
-                return "预估'\(preset.displayName)'预设可节省 \(formatBytes(space)) 空间"
+                return "'\(preset.displayName)' can free an estimated \(formatBytes(space)) of space"
             case .cleanup(let result, let preset):
-                return "应用'\(preset.displayName)'预设完成，删除了 \(result.filesDeleted) 个文件，释放了 \(formatBytes(result.spaceFreed)) 空间"
+                return "'\(preset.displayName)' completed. Removed \(result.filesDeleted) files and freed \(formatBytes(result.spaceFreed))"
             case .error(let message, let preset):
                 if let preset = preset {
-                    return "应用'\(preset.displayName)'预设时出错: \(message)"
+                    return "Failed to apply '\(preset.displayName)': \(message)"
                 } else {
-                    return "操作出错: \(message)"
+                    return "Operation failed: \(message)"
                 }
             }
         }
@@ -68,26 +68,26 @@ struct CleanupPresetsView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            // 标题和描述
+        VStack(spacing: 0) {
             headerSection
 
-            // 预设卡片网格
-            presetGridSection
+            Divider()
 
-            // 自定义预设部分
-            customPresetSection
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    presetGridSection
 
-            // 应用按钮
-            applyButtonSection
+                    Divider()
 
-            // 操作结果
-            resultSection
+                    customPresetSection
 
-            Spacer()
+                    applyButtonSection
+
+                    resultSection
+                }
+                .padding()
+            }
         }
-        .padding()
-        .frame(minWidth: 500, minHeight: 400)
         .onAppear {
             loadSpaceEstimates()
         }
@@ -118,28 +118,28 @@ struct CleanupPresetsView: View {
                 }
             )
         }
-        .alert("应用预设", isPresented: $showApplyConfirmation) {
-            Button("取消", role: .cancel) { }
-            Button("应用") {
+        .alert("Apply Preset", isPresented: $showApplyConfirmation) {
+            Button("Cancel", role: .cancel) { }
+            Button("Apply") {
                 if let preset = applyingPreset {
                     applyPreset(preset)
                 }
             }
         } message: {
             if let preset = applyingPreset {
-                Text("确定要应用'\(preset.displayName)'预设吗？\n这将覆盖当前的清理规则设置。")
+                Text("Apply '\(preset.displayName)'? This will overwrite the current cleanup rules.")
             }
         }
-        .alert("删除预设", isPresented: $showDeleteConfirmation) {
-            Button("取消", role: .cancel) { }
-            Button("删除", role: .destructive) {
+        .alert("Delete Preset", isPresented: $showDeleteConfirmation) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) {
                 if let preset = deletingPreset {
                     deleteCustomPreset(preset)
                 }
             }
         } message: {
             if let preset = deletingPreset {
-                Text("确定要删除'\(preset.name)'预设吗？\n此操作无法撤销。")
+                Text("Delete '\(preset.name)'? This action cannot be undone.")
             }
         }
         .sheet(isPresented: $showCleanupConfirmation) {
@@ -164,48 +164,46 @@ struct CleanupPresetsView: View {
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("预设清理策略")
-                    .font(.largeTitle)
-                    .bold()
+                Text("Preset Cleanup")
+                    .font(.headline)
 
                 Spacer()
 
                 // 操作类型选择
-                Picker("操作类型", selection: $actionType) {
-                    Text("仅预估").tag(CleanupActionType.estimateOnly)
-                    Text("立即清理").tag(CleanupActionType.cleanupNow)
+                Picker("Action", selection: $actionType) {
+                    Text("Estimate Only").tag(CleanupActionType.estimateOnly)
+                    Text("Clean Now").tag(CleanupActionType.cleanupNow)
                 }
                 .pickerStyle(.segmented)
                 .frame(width: 200)
                 .animated(actionType)
             }
 
-            Text("选择最适合您需求的清理策略，或创建自定义预设")
-                .font(.body)
+            Text("Choose a cleanup strategy that matches your needs, or create a custom preset.")
+                .font(.subheadline)
                 .foregroundColor(.secondary)
 
             // 操作类型说明
             Group {
                 switch actionType {
                 case .estimateOnly:
-                    Text("仅计算预估空间节省，不会删除任何文件")
+                    Text("Calculates estimated savings without deleting any files.")
                         .font(.caption)
                         .foregroundColor(.blue)
                 case .cleanupNow:
-                    Text("将应用预设并执行清理操作，删除符合条件的文件")
+                    Text("Applies the preset and performs cleanup on matching files.")
                         .font(.caption)
                         .foregroundColor(.orange)
                 }
             }
             .transition(.opacity)
-
-            Divider()
         }
+        .padding()
     }
 
     private var presetGridSection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("推荐预设")
+            Text("Recommended Presets")
                 .font(.headline)
 
             LazyVGrid(columns: [
@@ -236,7 +234,7 @@ struct CleanupPresetsView: View {
 
     private var customPresetSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("自定义预设")
+            Text("Custom Presets")
                 .font(.headline)
 
             if let customPresets = loadCustomPresets(), !customPresets.isEmpty {
@@ -279,7 +277,7 @@ struct CleanupPresetsView: View {
                     showCustomPresetEditor = true
                 }
             }) {
-                Label("创建自定义预设", systemImage: "plus.circle")
+                Label("Create Custom Preset", systemImage: "plus.circle")
             }
             .buttonStyle(.plain)
             .foregroundColor(.accentColor)
@@ -291,7 +289,7 @@ struct CleanupPresetsView: View {
         HStack {
             Spacer()
 
-            Button("取消", role: .cancel) {
+            Button("Cancel", role: .cancel) {
                 // 取消操作
             }
 
@@ -309,9 +307,9 @@ struct CleanupPresetsView: View {
                 } else {
                     switch actionType {
                     case .estimateOnly:
-                        Text("预估空间")
+                        Text("Estimate Space")
                     case .cleanupNow:
-                        Text("立即清理")
+                        Text("Clean Now")
                     }
                 }
             }
@@ -458,7 +456,7 @@ struct CleanupPresetsView: View {
             // 在主线程显示批量确认对话框
             DispatchQueue.main.async {
                 if filteredFiles.isEmpty {
-                    self.operationResult = .error(message: "没有找到符合条件的文件", preset: preset)
+                    self.operationResult = .error(message: "No matching files were found", preset: preset)
                     self.showOperationResult = true
                     self.isLoading = false
                 } else {
@@ -490,7 +488,7 @@ struct CleanupPresetsView: View {
                 } else {
                     let errorMessages = result.errors.map { $0.error.localizedDescription }.joined(separator: ", ")
                     if let preset = activePreset {
-                        self.operationResult = .error(message: "清理过程中出现错误: \(errorMessages)", preset: preset)
+                        self.operationResult = .error(message: "Errors occurred during cleanup: \(errorMessages)", preset: preset)
                     }
                 }
                 self.showOperationResult = true
