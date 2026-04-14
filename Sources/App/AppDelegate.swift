@@ -9,6 +9,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var settingsWindow: NSWindow?
     private var diskStats: DiskStats?
     @MainActor private lazy var dependencies = AppDependencies()
+    @MainActor private let settingsNavigationState = SettingsNavigationState()
     private let filePreviewer = FilePreviewer()
 
     @MainActor private var progressTracker: ProgressTracker {
@@ -125,16 +126,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             showNotification(title: "Quick Cleanup", message: "Scanning for files to clean...")
 
             let rules = RulesPersistenceService().loadRules()
-            let engine = dependencies.cleanupEngine
-
-            let result = await engine.quickCleanup(
-                rules: rules,
-                progress: { _, _, _ in },
-                confirmAction: nil
-            )
+            guard let result = await progressTracker.quickCleanup(rules: rules) else {
+                showNotification(title: "Quick Cleanup", message: "Cleanup is already in progress")
+                return
+            }
 
             if !result.errors.isEmpty {
-                let quickPaths = engine.getQuickCleanupPaths()
+                let quickPaths = dependencies.cleanupEngine.getQuickCleanupPaths()
                 let scanErrorCount = result.errors.filter { quickPaths.contains($0.filePath) }.count
                 if scanErrorCount > 0 {
                     showNotification(
@@ -154,20 +152,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 title: "Quick Cleanup Complete",
                 message: "Freed \(formattedFreed) by deleting \(result.filesDeleted) files"
             )
-
-            let record = CleanupHistoryRecord(
-                id: UUID(),
-                timestamp: Date(),
-                cleanupType: .quick,
-                filesDeleted: result.filesDeleted,
-                spaceFreed: result.spaceFreed,
-                duration: result.duration,
-                errors: result.errors.count,
-                wasCancelled: false
-            )
-            await MainActor.run {
-                dependencies.historyManager.addRecord(record)
-            }
         }
     }
 
@@ -191,13 +175,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @MainActor
     private func presentSettings(selecting tab: SettingsView.SidebarTab) {
-        let settingsView = SettingsView(
-            progressTracker: dependencies.progressTracker,
-            initialTab: tab
-        )
-        .environmentObject(dependencies.historyManager)
+        settingsNavigationState.selectedTab = tab
 
         if settingsWindow == nil {
+            let settingsView = SettingsView(
+                progressTracker: dependencies.progressTracker,
+                navigationState: settingsNavigationState
+            )
+            .environmentObject(dependencies.historyManager)
             let window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 700, height: 500),
                 styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -212,8 +197,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
             settingsWindow = window
         }
-
-        settingsWindow?.contentView = NSHostingView(rootView: settingsView)
 
         settingsWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
