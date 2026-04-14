@@ -3,7 +3,7 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var historyManager: CleanupHistoryManager
     @StateObject private var progressTracker = ProgressTracker()
-    @State private var rules = CleanupRules.load()
+    @State private var rules = RulesPersistenceService().loadRules()
     @State private var diskStats: DiskStats?
 
     // Dialog states
@@ -242,7 +242,7 @@ struct SettingsView: View {
             saveMessage = "Settings saved successfully"
         }
 
-        rules.save()
+        RulesPersistenceService().saveRules(rules)
         showSaveSuccess = true
 
         // Auto-hide after 2 seconds

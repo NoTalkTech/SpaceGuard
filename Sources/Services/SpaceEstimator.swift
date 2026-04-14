@@ -1,10 +1,19 @@
 import Foundation
 
+protocol CleanupScenarioDetecting {
+    func detectAllScenarios() -> [ScenarioDetectionResult]
+    func estimateSpaceForScenario(_ scenario: CleanupScenario) -> Int64
+}
+
 /// 空间预估器 - 用于估算清理操作可释放的磁盘空间
 class SpaceEstimator {
 
-    private let detector = CleanupScenariosDetector()
+    private let detector: CleanupScenarioDetecting
     private let fileManager = FileManager.default
+
+    init(detector: CleanupScenarioDetecting = CleanupScenariosDetector()) {
+        self.detector = detector
+    }
 
     /// 预估单个场景的可释放空间
     func estimateSpace(for scenario: CleanupScenario) -> Int64 {
@@ -161,6 +170,9 @@ class SpaceEstimator {
         return 0
     }
 }
+
+extension SpaceEstimator: SpaceEstimating {}
+extension CleanupScenariosDetector: CleanupScenarioDetecting {}
 
 /// 空间预估报告
 struct SpaceEstimationReport {

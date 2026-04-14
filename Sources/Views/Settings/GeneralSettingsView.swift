@@ -76,7 +76,7 @@ struct GeneralSettingsView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(spacing: 12) {
                         Button("Save Settings") {
-                            rules.save()
+                            RulesPersistenceService().saveRules(rules)
                             saveMessage = "Settings saved successfully"
                             showSaveSuccess = true
                             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
@@ -100,7 +100,7 @@ struct GeneralSettingsView: View {
             Button("Cancel", role: .cancel) { }
             Button("Reset", role: .destructive) {
                 rules = CleanupRules()
-                rules.save()
+                RulesPersistenceService().saveRules(rules)
                 saveMessage = "Settings reset to defaults"
                 showSaveSuccess = true
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2) {

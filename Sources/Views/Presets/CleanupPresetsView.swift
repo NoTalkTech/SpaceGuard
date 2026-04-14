@@ -9,7 +9,7 @@ enum CleanupActionType {
 
 /// 预设清理选择视图
 struct CleanupPresetsView: View {
-    @State private var rules = CleanupRules.load()
+    @State private var rules = RulesPersistenceService().loadRules()
     @State private var selectedPreset: CleanupPreset?
     @State private var showCustomPresetEditor = false
     @State private var showApplyConfirmation = false
@@ -395,9 +395,8 @@ struct CleanupPresetsView: View {
 
         DispatchQueue.global(qos: .userInitiated).async {
             // 应用预设到规则
-            var updatedRules = self.rules
-            updatedRules.applyPreset(preset)
-            updatedRules.save()
+            let updatedRules = CleanupPresetManager().applyPreset(preset, to: self.rules)
+            RulesPersistenceService().saveRules(updatedRules)
 
             // 根据操作类型执行不同操作
             switch self.actionType {

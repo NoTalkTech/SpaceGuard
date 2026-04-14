@@ -4,6 +4,19 @@ import AppKit
 /// 安全检查器 - 验证清理操作的安全性
 class SafetyChecker {
 
+    private static let appAssociations: [(patterns: [String], bundleIds: [String])] = [
+        (patterns: [".xcodeproj", ".swift", ".m", ".h"], bundleIds: ["com.apple.dt.Xcode"]),
+        (patterns: [".java", ".jar", ".class"], bundleIds: ["com.jetbrains.intellij"]),
+        (patterns: [".js", ".ts", ".jsx", ".tsx", ".json"], bundleIds: ["com.microsoft.VSCode", "com.github.atom"]),
+        (patterns: [".pdf"], bundleIds: ["com.adobe.AdobeReader", "com.apple.Preview"]),
+        (patterns: [".doc", ".docx"], bundleIds: ["com.microsoft.Word"]),
+        (patterns: [".xls", ".xlsx"], bundleIds: ["com.microsoft.Excel"]),
+        (patterns: [".ppt", ".pptx"], bundleIds: ["com.microsoft.PowerPoint"]),
+        (patterns: ["jetbrains"], bundleIds: ["com.jetbrains.*"])
+    ]
+
+    private static let systemPaths = ["/System", "/usr", "/bin", "/sbin", "/etc", "/private", "/Library"]
+
     private let fileManager = FileManager.default
 
     // MARK: - Public API
@@ -61,19 +74,7 @@ class SafetyChecker {
     func checkApplicationForPathRunning(_ filePath: String) -> Bool {
         let path = filePath.lowercased()
 
-        // 常见应用关联检查（简化版）
-        let appAssociations: [(patterns: [String], bundleIds: [String])] = [
-            (patterns: [".xcodeproj", ".swift", ".m", ".h"], bundleIds: ["com.apple.dt.Xcode"]),
-            (patterns: [".java", ".jar", ".class"], bundleIds: ["com.jetbrains.intellij"]),
-            (patterns: [".js", ".ts", ".jsx", ".tsx", ".json"], bundleIds: ["com.microsoft.VSCode", "com.github.atom"]),
-            (patterns: [".pdf"], bundleIds: ["com.adobe.AdobeReader", "com.apple.Preview"]),
-            (patterns: [".doc", ".docx"], bundleIds: ["com.microsoft.Word"]),
-            (patterns: [".xls", ".xlsx"], bundleIds: ["com.microsoft.Excel"]),
-            (patterns: [".ppt", ".pptx"], bundleIds: ["com.microsoft.PowerPoint"]),
-            (patterns: ["jetbrains"], bundleIds: ["com.jetbrains.*"])
-        ]
-
-        for association in appAssociations {
+        for association in Self.appAssociations {
             for pattern in association.patterns {
                 if path.contains(pattern) {
                     for bundleId in association.bundleIds {
@@ -160,8 +161,7 @@ class SafetyChecker {
 
         // 4. 系统文件保护（如果提供规则）
         if rules != nil {
-            let systemPaths = ["/System", "/usr", "/bin", "/sbin", "/etc", "/private", "/Library"]
-            for systemPath in systemPaths {
+            for systemPath in Self.systemPaths {
                 if filePath.hasPrefix(systemPath) {
                     issues.append(SafetyIssue(
                         type: .systemFileInclusion,
