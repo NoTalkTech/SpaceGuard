@@ -5,14 +5,14 @@ class RuleManager {
 
     /// Validates rules and returns any conflicts found
     func validateRules(_ rules: CleanupRules) -> (isValid: Bool, conflicts: [RuleConflict]) {
-        let conflicts = rules.detectConflicts()
+        let conflicts = detectConflicts(rules)
         return (conflicts.isEmpty, conflicts)
     }
 
     /// Applies rule priority management and resolves conflicts
     func applyRulePriorityManagement(_ rules: inout CleanupRules) {
         // Auto-resolve conflicts before processing
-        rules.resolveConflicts()
+        resolveConflicts(&rules)
 
         // Apply additional priority logic
 
@@ -236,5 +236,92 @@ class RuleManager {
         }
 
         return (shouldDelete, confidence)
+    }
+
+    func detectConflicts(_ rules: CleanupRules) -> [RuleConflict] {
+        var conflicts: [RuleConflict] = []
+
+        // 1. Check for path inclusion/exclusion conflicts
+        for include in rules.includeLocations {
+            for exclude in rules.excludeLocations {
+                if include.hasPrefix(exclude) || exclude.hasPrefix(include) {
+                    conflicts.append(RuleConflict(
+                        type: .pathInclusionExclusion,
+                        description: "Path '\(include)' is both included and excluded (conflicts with '\(exclude)')",
+                        severity: .high
+                    ))
+                }
+            }
+        }
+
+        // 2. Check for file type rule conflicts
+        for ext in rules.fileTypeRules.whitelistedExtensions {
+            if rules.fileTypeRules.blacklistedExtensions.contains(ext) {
+                conflicts.append(RuleConflict(
+                    type: .fileTypeRule,
+                    description: "File extension '\(ext)' is both whitelisted and blacklisted",
+                    severity: .medium
+                ))
+            }
+        }
+
+        // 3. Check for custom risk override conflicts with system paths
+        for customOverride in rules.customRiskOverrides {
+            if isSystemFile(customOverride.path) && customOverride.riskLevel != .high {
+                conflicts.append(RuleConflict(
+                    type: .customRiskOverride,
+                    description: "Custom risk override for system path '\(customOverride.path)' sets risk to \(customOverride.riskLevel), but system files should typically be high risk",
+                    severity: .high
+                ))
+            }
+        }
+
+        // 4. Check for unreasonable age thresholds
+        if rules.deleteDownloadsOlderThanDays < 1 {
+            conflicts.append(RuleConflict(
+                type: .ageThreshold,
+                description: "Download age threshold (\(rules.deleteDownloadsOlderThanDays) days) is too low and may delete recent files",
+                severity: .medium
+            ))
+        }
+
+        if rules.deleteCacheOlderThanDays < 0 {
+            conflicts.append(RuleConflict(
+                type: .ageThreshold,
+                description: "Cache age threshold (\(rules.deleteCacheOlderThanDays) days) is negative",
+                severity: .high
+            ))
+        }
+
+        return conflicts
+    }
+
+    func resolveConflicts(_ rules: inout CleanupRules) {
+        // 1. Resolve file type conflicts: blacklist takes precedence over whitelist
+        var resolvedWhitelist = rules.fileTypeRules.whitelistedExtensions
+        for ext in rules.fileTypeRules.blacklistedExtensions {
+            resolvedWhitelist.removeAll { $0 == ext }
+        }
+        rules.fileTypeRules.whitelistedExtensions = resolvedWhitelist
+
+        // 2. Resolve path conflicts: exclusion takes precedence over inclusion
+        // (This is already handled in shouldIncludeFile method)
+
+        // 3. Ensure system files are always high risk
+        for i in 0..<rules.customRiskOverrides.count {
+            if isSystemFile(rules.customRiskOverrides[i].path) {
+                rules.customRiskOverrides[i].riskLevel = .high
+            }
+        }
+
+        // 4. Validate age thresholds
+        rules.deleteDownloadsOlderThanDays = max(1, rules.deleteDownloadsOlderThanDays)
+        rules.deleteLogsOlderThanDays = max(0, rules.deleteLogsOlderThanDays)
+        rules.deleteCacheOlderThanDays = max(0, rules.deleteCacheOlderThanDays)
+    }
+
+    private func isSystemFile(_ path: String) -> Bool {
+        let systemPaths = ["/System", "/usr", "/bin", "/sbin", "/etc", "/private", "/Library", "/Applications/Utilities"]
+        return systemPaths.contains { path.hasPrefix($0) }
     }
 }

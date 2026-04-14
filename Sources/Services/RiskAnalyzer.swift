@@ -52,7 +52,7 @@ struct RiskAssessment: Codable {
 // MARK: - Risk Analyzer
 
 class RiskAnalyzer {
-    private let fileManager = FileManager.default
+    private let classifier = FileClassifier()
 
     func analyzeFiles(_ files: [FileItem], rules: CleanupRules? = nil) -> [FileItem] {
         files.map { file in
@@ -130,17 +130,17 @@ class RiskAnalyzer {
         }
 
         // Low risk: Cache and temporary files (safest to delete)
-        if isCacheFile(path) || isTempFile(path) || isTrashFile(path) {
+        if classifier.isCacheFile(path) || classifier.isTempFile(path) || classifier.isTrashFile(path) {
             return .low
         }
 
         // Medium risk: User data that might be important
-        if isUserDocument(path) || isRecentDownload(path) || isLogFile(path) {
+        if classifier.isUserDocument(path) || classifier.isRecentDownload(path) || classifier.isLogFile(path) {
             return .medium
         }
 
         // High risk: System files and critical user data
-        if isSystemFile(path) || isApplicationBundle(path) || isCriticalUserFile(path) {
+        if classifier.isSystemFile(path) || classifier.isApplicationBundle(path) || classifier.isCriticalUserFile(path) {
             return .high
         }
 
@@ -153,145 +153,34 @@ class RiskAnalyzer {
 
         switch riskLevel {
         case .high:
-            if isSystemFile(path) {
+            if classifier.isSystemFile(path) {
                 return "System file"
-            } else if isApplicationBundle(path) {
+            } else if classifier.isApplicationBundle(path) {
                 return "Application bundle"
-            } else if isCriticalUserFile(path) {
+            } else if classifier.isCriticalUserFile(path) {
                 return "Critical user file"
             }
 
         case .medium:
-            if isUserDocument(path) {
+            if classifier.isUserDocument(path) {
                 return "User document"
-            } else if isRecentDownload(path) {
+            } else if classifier.isRecentDownload(path) {
                 return "Recent download"
-            } else if isLogFile(path) {
+            } else if classifier.isLogFile(path) {
                 return "Log file"
             }
 
         case .low:
-            if isTempFile(path) {
+            if classifier.isTempFile(path) {
                 return "Temporary file"
-            } else if isCacheFile(path) {
+            } else if classifier.isCacheFile(path) {
                 return "Cache file"
-            } else if isTrashFile(path) {
+            } else if classifier.isTrashFile(path) {
                 return "Trash content"
             }
         }
 
         return "Unknown file type"
-    }
-
-    // MARK: - Classification Helpers
-
-    private func isSystemFile(_ path: String) -> Bool {
-        let home = NSHomeDirectory()
-        // 用户主目录下的文件不是系统文件
-        if path.hasPrefix(home) {
-            return false
-        }
-
-        let systemPaths = ["/System", "/usr", "/bin", "/sbin", "/etc", "/private", "/Library", "/Applications/Utilities"]
-        return systemPaths.contains { path.hasPrefix($0) }
-    }
-
-    private func isApplicationBundle(_ path: String) -> Bool {
-        return path.hasSuffix(".app") || path.contains(".app/")
-    }
-
-    private func isCriticalUserFile(_ path: String) -> Bool {
-        // 检查关键用户数据目录
-        let criticalPatterns = [
-            "/Library/Application Support/",
-            "/Library/Preferences/",
-            "/Library/Mail/",
-            "/Library/Messages/"
-        ]
-
-        // 排除系统目录
-        if isSystemFile(path) {
-            return false
-        }
-
-        // 检查是否匹配任一关键模式
-        for pattern in criticalPatterns {
-            if path.contains(pattern) {
-                return true
-            }
-        }
-
-        return false
-    }
-
-    private func isUserDocument(_ path: String) -> Bool {
-        // 检查常见用户文档目录模式
-        let documentPatterns = [
-            "/Documents/",
-            "/Desktop/",
-            "/Pictures/",
-            "/Movies/",
-            "/Music/",
-            "/Downloads/",
-            "/Public/",
-            "/Sites/"
-        ]
-
-        // 排除系统目录
-        if isSystemFile(path) {
-            return false
-        }
-
-        // 检查是否匹配任一文档模式
-        for pattern in documentPatterns {
-            if path.contains(pattern) {
-                // 对于Downloads目录，排除最近下载
-                if pattern == "/Downloads/" {
-                    return !isRecentDownload(path)
-                }
-                return true
-            }
-        }
-
-        return false
-    }
-
-    private func isRecentDownload(_ path: String) -> Bool {
-        // 检查是否是Downloads目录下的文件
-        guard path.contains("/Downloads/") else {
-            return false
-        }
-
-        do {
-            let attributes = try fileManager.attributesOfItem(atPath: path)
-            if let modDate = attributes[.modificationDate] as? Date {
-                let daysOld = Calendar.current.dateComponents([.day], from: modDate, to: Date()).day ?? 0
-                return daysOld < 30 // Less than 30 days old
-            }
-        } catch {
-            return false
-        }
-
-        return false
-    }
-
-    private func isLogFile(_ path: String) -> Bool {
-        return path.contains("Logs") || path.contains(".log") || path.hasSuffix(".log")
-    }
-
-    private func isCacheFile(_ path: String) -> Bool {
-        return path.contains("Caches") || path.contains("Cache.") ||
-               path.contains("/tmp/") || path.contains(".cache")
-    }
-
-    private func isTempFile(_ path: String) -> Bool {
-        return path.contains("/tmp/") || path.contains("/var/tmp/") ||
-               path.hasPrefix("/private/tmp/") || path.hasPrefix("/private/var/tmp/") ||
-               path.contains("/var/folders/") // macOS temporary directory
-    }
-
-    private func isTrashFile(_ path: String) -> Bool {
-        return path.contains(".Trash") || path.contains("Trash") || path.contains("废纸篓")
     }
 
     // MARK: - Statistics
@@ -332,16 +221,16 @@ class RiskAnalyzer {
                 score = 20.0
                 description = "Custom override: Low risk"
             }
-        } else if isSystemFile(path) || isApplicationBundle(path) || isCriticalUserFile(path) {
+        } else if classifier.isSystemFile(path) || classifier.isApplicationBundle(path) || classifier.isCriticalUserFile(path) {
             score = 90.0
             description = "System or critical file"
-        } else if isUserDocument(path) || isLogFile(path) {
+        } else if classifier.isUserDocument(path) || classifier.isLogFile(path) {
             score = 70.0
             description = "User document or log file"
-        } else if isRecentDownload(path) {
+        } else if classifier.isRecentDownload(path) {
             score = 65.0
             description = "Recent download"
-        } else if isCacheFile(path) || isTempFile(path) || isTrashFile(path) {
+        } else if classifier.isCacheFile(path) || classifier.isTempFile(path) || classifier.isTrashFile(path) {
             score = 20.0
             description = "Cache or temporary file"
         }
@@ -365,10 +254,10 @@ class RiskAnalyzer {
         if path.contains("/Downloads/") && daysOld > rules.deleteDownloadsOlderThanDays {
             score = 20.0 // Old download - lower risk (safer to delete)
             description = "Old download (\(daysOld) days, threshold: \(rules.deleteDownloadsOlderThanDays) days)"
-        } else if isLogFile(path) && daysOld > rules.deleteLogsOlderThanDays {
+        } else if classifier.isLogFile(path) && daysOld > rules.deleteLogsOlderThanDays {
             score = 25.0 // Old log file
             description = "Old log file (\(daysOld) days, threshold: \(rules.deleteLogsOlderThanDays) days)"
-        } else if isCacheFile(path) && daysOld > rules.deleteCacheOlderThanDays {
+        } else if classifier.isCacheFile(path) && daysOld > rules.deleteCacheOlderThanDays {
             score = 15.0 // Old cache file
             description = "Old cache file (\(daysOld) days, threshold: \(rules.deleteCacheOlderThanDays) days)"
         } else if daysOld < 7 {

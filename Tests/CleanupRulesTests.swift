@@ -207,13 +207,13 @@ final class CleanupRulesTests: XCTestCase {
         originalRules.exclusionPatterns = ["*.tmp", "*.log"]
 
         // 应用预设以便测试预设字段
-        originalRules.applyPreset(.developer)
+        originalRules = CleanupPresetManager().applyPreset(.developer, to: originalRules)
 
         // 保存规则
-        originalRules.save()
+        RulesPersistenceService().saveRules(originalRules)
 
         // 加载规则
-        let loadedRules = CleanupRules.load()
+        let loadedRules = RulesPersistenceService().loadRules()
 
         // 验证基本属性
         XCTAssertEqual(loadedRules.autoCleanLowRisk, originalRules.autoCleanLowRisk)
