@@ -4,10 +4,11 @@ import XCTest
 final class SpaceEstimatorTests: XCTestCase {
 
     var estimator: SpaceEstimator!
+    private let mockDetector = MockCleanupScenariosDetector()
 
     override func setUp() {
         super.setUp()
-        estimator = SpaceEstimator()
+        estimator = SpaceEstimator(detector: mockDetector)
     }
 
     override func tearDown() {
@@ -64,5 +65,37 @@ final class SpaceEstimatorTests: XCTestCase {
         // 验证包含数字
         let containsDigit = formatted.rangeOfCharacter(from: .decimalDigits) != nil
         XCTAssertTrue(containsDigit, "格式化字符串应包含数字")
+    }
+}
+
+private struct MockCleanupScenariosDetector: CleanupScenarioDetecting {
+    func detectAllScenarios() -> [ScenarioDetectionResult] {
+        [
+            ScenarioDetectionResult(
+                scenario: .trash,
+                detected: true,
+                estimatedSpace: 50 * 1024 * 1024,
+                detectedPaths: ["/tmp/.Trash"],
+                lastModified: Date()
+            ),
+            ScenarioDetectionResult(
+                scenario: .wallpaperCache,
+                detected: true,
+                estimatedSpace: 300 * 1024 * 1024,
+                detectedPaths: ["/tmp/wallpaper"],
+                lastModified: Date()
+            ),
+            ScenarioDetectionResult(
+                scenario: .npmCache,
+                detected: false,
+                estimatedSpace: 0,
+                detectedPaths: [],
+                lastModified: nil
+            )
+        ]
+    }
+
+    func estimateSpaceForScenario(_ scenario: CleanupScenario) -> Int64 {
+        detectAllScenarios().first(where: { $0.scenario == scenario })?.estimatedSpace ?? 0
     }
 }

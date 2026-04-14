@@ -49,12 +49,13 @@ final class CleanupRulesTests: XCTestCase {
 
     func testDetectConflicts() {
         var rules = CleanupRules()
+        let ruleManager = RuleManager()
 
         // 测试1：路径包含/排除冲突
         rules.includeLocations = ["/Users/test/Documents"]
         rules.excludeLocations = ["/Users/test/Documents/Subfolder"]
 
-        let conflicts1 = rules.detectConflicts()
+        let conflicts1 = ruleManager.detectConflicts(rules)
         XCTAssertEqual(conflicts1.count, 1)
         if let conflict = conflicts1.first {
             XCTAssertEqual(conflict.type, .pathInclusionExclusion)
@@ -66,7 +67,7 @@ final class CleanupRulesTests: XCTestCase {
         rules.fileTypeRules.whitelistedExtensions = [".txt", ".pdf"]
         rules.fileTypeRules.blacklistedExtensions = [".txt", ".doc"]
 
-        let conflicts2 = rules.detectConflicts()
+        let conflicts2 = ruleManager.detectConflicts(rules)
         XCTAssertEqual(conflicts2.count, 2) // 1个路径冲突 + 1个文件类型冲突
         let fileTypeConflict = conflicts2.first { $0.type == .fileTypeRule }
         XCTAssertNotNil(fileTypeConflict)
@@ -79,7 +80,7 @@ final class CleanupRulesTests: XCTestCase {
         let customOverride = CustomRiskOverride(path: "/System/Library", riskLevel: .low)
         rules.customRiskOverrides = [customOverride]
 
-        let conflicts3 = rules.detectConflicts()
+        let conflicts3 = ruleManager.detectConflicts(rules)
         let customOverrideConflict = conflicts3.first { $0.type == .customRiskOverride }
         XCTAssertNotNil(customOverrideConflict)
         if let conflict = customOverrideConflict {
@@ -92,7 +93,7 @@ final class CleanupRulesTests: XCTestCase {
         rules.deleteDownloadsOlderThanDays = 0
         rules.deleteCacheOlderThanDays = -1
 
-        let conflicts4 = rules.detectConflicts()
+        let conflicts4 = ruleManager.detectConflicts(rules)
         let ageConflicts = conflicts4.filter { $0.type == .ageThreshold }
         XCTAssertEqual(ageConflicts.count, 2)
 
@@ -113,6 +114,7 @@ final class CleanupRulesTests: XCTestCase {
 
     func testResolveConflicts() {
         var rules = CleanupRules()
+        let ruleManager = RuleManager()
 
         // 设置冲突
         rules.fileTypeRules.whitelistedExtensions = [".txt", ".pdf", ".doc"]
@@ -128,7 +130,7 @@ final class CleanupRulesTests: XCTestCase {
         rules.deleteCacheOlderThanDays = -10
 
         // 解决冲突
-        rules.resolveConflicts()
+        ruleManager.resolveConflicts(&rules)
 
         // 验证文件类型冲突已解决：黑名单优先
         XCTAssertFalse(rules.fileTypeRules.whitelistedExtensions.contains(".txt"))
@@ -152,9 +154,10 @@ final class CleanupRulesTests: XCTestCase {
 
     func testApplyPreset() {
         var rules = CleanupRules()
+        let presetManager = CleanupPresetManager()
 
         // 应用安全预设
-        rules.applyPreset(.safe)
+        rules = presetManager.applyPreset(.safe, to: rules)
 
         // 验证预设已应用
         XCTAssertTrue(rules.autoCleanLowRisk)

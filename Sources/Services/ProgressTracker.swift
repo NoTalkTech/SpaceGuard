@@ -23,11 +23,11 @@ class ProgressTracker: ObservableObject {
     init(
         scannerFactory: @escaping () -> DiskScannerProtocol = { DiskScanner() },
         engineFactory: @escaping () -> CleanupEngineProtocol = { CleanupEngine() },
-        historyManager: CleanupHistoryManager = .shared
+        historyManager: CleanupHistoryManager? = nil
     ) {
         self.scannerFactory = scannerFactory
         self.engineFactory = engineFactory
-        self.historyManager = historyManager
+        self.historyManager = historyManager ?? .shared
     }
 
     func startScan(path: String = NSHomeDirectory()) async -> DiskScanner.ScanResult? {

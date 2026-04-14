@@ -5,28 +5,28 @@ final class CleanupPresetManagerTests: XCTestCase {
 
     var presetManager: CleanupPresetManager!
     var mockUserDefaults: UserDefaults!
+    private var mockEstimator: MockSpaceEstimator!
 
     override func setUp() {
         super.setUp()
         // 使用临时UserDefaults避免污染实际数据
         mockUserDefaults = UserDefaults(suiteName: "TestSuite")
         mockUserDefaults?.removePersistentDomain(forName: "TestSuite")
+        mockEstimator = MockSpaceEstimator()
 
-        // 创建预设管理器，注入模拟的UserDefaults
-        presetManager = CleanupPresetManager()
-        // 注意：实际实现中CleanupPresetManager使用UserDefaults.standard
-        // 在测试中我们无法直接注入，所以需要确保测试不会影响实际数据
-        // 这里我们暂时依赖实际UserDefaults，但会在tearDown中清理
+        // 创建预设管理器，注入测试依赖，避免扫描真实文件系统
+        presetManager = CleanupPresetManager(
+            userDefaults: mockUserDefaults,
+            estimator: mockEstimator
+        )
     }
 
     override func tearDown() {
         // 清理测试数据
-        let defaults = UserDefaults.standard
-        defaults.removeObject(forKey: "customPresets")
-        defaults.removeObject(forKey: "customPresetRules")
-        defaults.synchronize()
+        mockUserDefaults?.removePersistentDomain(forName: "TestSuite")
 
         presetManager = nil
+        mockEstimator = nil
         super.tearDown()
     }
 
@@ -275,10 +275,10 @@ final class CleanupPresetManagerTests: XCTestCase {
 
     func testPresetEstimatedSavings() {
         // 测试预估节省空间方法
-        let estimator = SpaceEstimator()
+        let estimator = MockSpaceEstimator()
         let safePreset = CleanupPreset.safe
 
-        let savings1 = safePreset.estimatedSavings()
+        let savings1 = safePreset.estimatedSavings(using: estimator)
         let savings2 = safePreset.estimatedSavings(using: estimator)
 
         // 两个方法应返回相同结果（一个使用默认estimator，一个使用传入的）
@@ -287,10 +287,39 @@ final class CleanupPresetManagerTests: XCTestCase {
         // 由于是估算，可能不完全相等，但应该是相同数量级
 
         // 测试格式化节省空间
-        let formatted = safePreset.formattedSavings()
+        let formatted = safePreset.formattedSavings(using: estimator)
         XCTAssertFalse(formatted.isEmpty)
         // 验证包含数字（格式化字节数应包含数字）
         let containsDigit = formatted.rangeOfCharacter(from: .decimalDigits) != nil
         XCTAssertTrue(containsDigit, "格式化字符串应包含数字: \(formatted)")
+    }
+}
+
+private struct MockSpaceEstimator: SpaceEstimating {
+    func estimateSpace(for scenario: CleanupScenario) -> Int64 {
+        switch scenario {
+        case .trash:
+            return 50 * 1024 * 1024
+        case .wallpaperCache:
+            return 300 * 1024 * 1024
+        case .jetbrainsCache, .jetbrainsLogs:
+            return 200 * 1024 * 1024
+        case .shipItCache:
+            return 120 * 1024 * 1024
+        case .homebrewCache:
+            return 400 * 1024 * 1024
+        case .npmCache:
+            return 180 * 1024 * 1024
+        case .pipCache:
+            return 90 * 1024 * 1024
+        }
+    }
+
+    func estimateSpace(for scenarios: [CleanupScenario]) -> Int64 {
+        scenarios.reduce(0) { $0 + estimateSpace(for: $1) }
+    }
+
+    func estimateSpaceForRules(_ rules: CleanupRules) -> Int64 {
+        Int64(rules.includeLocations.count) * 400 * 1024 * 1024
     }
 }

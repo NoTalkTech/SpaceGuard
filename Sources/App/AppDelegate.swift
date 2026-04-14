@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 import UserNotifications
 
+@MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem!
     var menu: NSMenu!
@@ -21,7 +22,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Update disk info periodically (every 5 minutes)
         Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
-            self?.updateDiskInfo()
+            Task { @MainActor [weak self] in
+                self?.updateDiskInfo()
+            }
         }
 
         // Setup confirmation callback for medium/high risk files
@@ -109,7 +112,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             showNotification(title: "Quick Cleanup", message: "Scanning for files to clean...")
 
             let rules = RulesPersistenceService().loadRules()
-            let engine = await dependencies.cleanupEngine
+            let engine = dependencies.cleanupEngine
 
             let result = await engine.quickCleanup(
                 rules: rules,

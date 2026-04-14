@@ -58,12 +58,12 @@ public enum CleanupPreset: String, CaseIterable, Identifiable, Codable, Sendable
     }
 
     /// 预估节省空间（基于包含的场景）
-    func estimatedSavings(using estimator: SpaceEstimator = SpaceEstimator()) -> Int64 {
+    func estimatedSavings(using estimator: SpaceEstimating = SpaceEstimator()) -> Int64 {
         return estimator.estimateSpace(for: includedScenarios)
     }
 
     /// 获取格式化的预估节省空间
-    func formattedSavings(using estimator: SpaceEstimator = SpaceEstimator()) -> String {
+    func formattedSavings(using estimator: SpaceEstimating = SpaceEstimator()) -> String {
         let savings = estimatedSavings(using: estimator)
         return formatBytes(savings)
     }

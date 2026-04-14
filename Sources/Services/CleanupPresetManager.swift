@@ -1,10 +1,24 @@
 import Foundation
 
+protocol SpaceEstimating {
+    func estimateSpace(for scenario: CleanupScenario) -> Int64
+    func estimateSpace(for scenarios: [CleanupScenario]) -> Int64
+    func estimateSpaceForRules(_ rules: CleanupRules) -> Int64
+}
+
 /// 预设管理器
 public class CleanupPresetManager {
 
-    private let userDefaults = UserDefaults.standard
-    private let estimator = SpaceEstimator()
+    private let userDefaults: UserDefaults
+    private let estimator: SpaceEstimating
+
+    init(
+        userDefaults: UserDefaults = .standard,
+        estimator: SpaceEstimating = SpaceEstimator()
+    ) {
+        self.userDefaults = userDefaults
+        self.estimator = estimator
+    }
 
     /// 获取预设对应的规则配置
     func getPresetRules(_ preset: CleanupPreset) -> CleanupRules {
@@ -119,6 +133,7 @@ public class CleanupPresetManager {
         mergedRules.appCachesToClean = combinedAppCaches.sorted()
 
         // 记录应用的预设
+        mergedRules.activePreset = preset
         if !mergedRules.appliedPresets.contains(preset) {
             mergedRules.appliedPresets.append(preset)
         }
@@ -215,4 +230,3 @@ public class CleanupPresetManager {
         }
     }
 }
-
