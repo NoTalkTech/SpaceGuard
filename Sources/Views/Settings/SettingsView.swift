@@ -1,21 +1,8 @@
 import SwiftUI
 
 @MainActor
-final class SettingsNavigationState: ObservableObject {
-    @Published var selectedTab: SettingsView.SidebarTab
-
-    init(selectedTab: SettingsView.SidebarTab = .cleanup) {
-        self.selectedTab = selectedTab
-    }
-}
-
-@MainActor
 struct SettingsView: View {
-    @EnvironmentObject var historyManager: CleanupHistoryManager
-    @StateObject private var progressTracker: ProgressTracker
-    @ObservedObject private var navigationState: SettingsNavigationState
     @State private var rules = RulesPersistenceService().loadRules()
-    @State private var diskStats: DiskStats?
 
     // Dialog states
     @State private var showAddOverride = false
@@ -34,111 +21,19 @@ struct SettingsView: View {
     @State private var ruleConflicts: [RuleConflict] = []
     @State private var showRuleConflicts = false
 
-    init(
-        progressTracker: ProgressTracker,
-        navigationState: SettingsNavigationState
-    ) {
-        _progressTracker = StateObject(wrappedValue: progressTracker)
-        self.navigationState = navigationState
-    }
-
-    init(navigationState: SettingsNavigationState) {
-        _progressTracker = StateObject(wrappedValue: ProgressTracker())
-        self.navigationState = navigationState
-    }
-
-    init() {
-        _progressTracker = StateObject(wrappedValue: ProgressTracker())
-        self.navigationState = SettingsNavigationState()
-    }
-
-    enum SidebarTab: String, CaseIterable {
-        case cleanup = "Cleanup"
-        case settings = "Settings"
-        case history = "History"
-
-        var icon: String {
-            switch self {
-            case .cleanup: return "trash"
-            case .settings: return "gear"
-            case .history: return "clock.arrow.circlepath"
-            }
-        }
-    }
-
     var body: some View {
-        HStack(spacing: 0) {
-            // Sidebar
-            VStack(spacing: 0) {
-                ScrollView {
-                    VStack(spacing: 1) {
-                        ForEach(SidebarTab.allCases, id: \.self) { tab in
-                            HStack {
-                                Image(systemName: tab.icon)
-                                    .frame(width: 20, height: 20)
-                                Text(tab.rawValue)
-                                    .font(.system(size: 13, weight: .regular))
-                                Spacer()
-                            }
-                            .padding(.vertical, 10)
-                            .padding(.horizontal, 12)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .fill(navigationState.selectedTab == tab ? Color.accentColor.opacity(0.2) : Color.clear)
-                            )
-                            .cornerRadius(6)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                navigationState.selectedTab = tab
-                            }
-                        }
-                    }
-                    .padding(.vertical, 8)
-                }
-                .frame(width: 200)
-                .background(Color(hex: "#b3b3b3").opacity(0.1))
-            }
-            .frame(width: 200)
-            .background(Color(hex: "#b3b3b3").opacity(0.1))
-
-            Divider()
-
-            // Content area
-            Group {
-                switch navigationState.selectedTab {
-                case .cleanup:
-                    CleanupSettingsView(
-                        progressTracker: progressTracker,
-                        rules: rules,
-                        diskStats: diskStats,
-                        loadDiskStats: loadDiskStats,
-                        historyManager: historyManager
-                    )
-                case .settings:
-                    UnifiedSettingsView(
-                        rules: $rules,
-                        showResetConfirmation: $showResetConfirmation,
-                        showAddOverride: $showAddOverride,
-                        showAddPattern: $showAddPattern,
-                        showConfigureSchedule: $showConfigureSchedule,
-                        showFileTypeRulesEditor: $showFileTypeRulesEditor,
-                        showSaveSuccess: $showSaveSuccess,
-                        saveMessage: $saveMessage,
-                        saveRules: saveRules
-                    )
-                case .history:
-                    CleanupHistoryView(historyManager: historyManager)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding()
-            .background(Color(nsColor: .windowBackgroundColor))
-        }
+        UnifiedSettingsView(
+            rules: $rules,
+            showResetConfirmation: $showResetConfirmation,
+            showAddOverride: $showAddOverride,
+            showAddPattern: $showAddPattern,
+            showConfigureSchedule: $showConfigureSchedule,
+            showFileTypeRulesEditor: $showFileTypeRulesEditor,
+            showSaveSuccess: $showSaveSuccess,
+            saveMessage: $saveMessage,
+            saveRules: saveRules
+        )
         .frame(width: 700, height: 500)
-        .onAppear {
-            loadDiskStats()
-        }
         .sheet(isPresented: $showAddOverride) {
             AddCustomRiskOverrideView(
                 isPresented: $showAddOverride,
@@ -175,50 +70,37 @@ struct SettingsView: View {
                 saveRules()
             }
         }
-        .overlay(
-            Group {
-                if showSaveSuccess {
-                    VStack {
-                        Spacer()
-                        HStack {
-                            if ruleConflicts.isEmpty {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundColor(.green)
-                            } else {
-                                Image(systemName: "exclamationmark.triangle.fill")
-                                    .foregroundColor(.orange)
-                                    .onTapGesture {
-                                        showRuleConflicts = true
-                                    }
+        .overlay(alignment: .bottom) {
+            if showSaveSuccess {
+                HStack {
+                    if ruleConflicts.isEmpty {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                    } else {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.orange)
+                            .onTapGesture {
+                                showRuleConflicts = true
                             }
-                            Text(saveMessage)
-                                .font(.caption)
-                                .foregroundColor(.primary)
-                        }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(.regularMaterial)
-                        .cornerRadius(8)
-                        .shadow(radius: 2)
-                        .padding(.bottom, 20)
                     }
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .animation(.easeInOut, value: showSaveSuccess)
+                    Text(saveMessage)
+                        .font(.caption)
+                        .foregroundColor(.primary)
                 }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(.regularMaterial)
+                .cornerRadius(8)
+                .shadow(radius: 2)
+                .padding(.bottom, 20)
             }
-        )
+        }
         .sheet(isPresented: $showRuleConflicts) {
             RuleConflictsView(isPresented: $showRuleConflicts, conflicts: ruleConflicts)
         }
     }
 
-    private func loadDiskStats() {
-        let scanner = DiskScanner()
-        diskStats = scanner.getDiskUsage()
-    }
-
     private func saveRules() {
-        // Validate rules before saving
         let ruleManager = RuleManager()
         let (_, conflicts) = ruleManager.validateRules(rules)
         ruleConflicts = conflicts
@@ -233,17 +115,14 @@ struct SettingsView: View {
         RulesPersistenceService().saveRules(rules)
         showSaveSuccess = true
 
-        // Auto-hide after 2 seconds
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
             showSaveSuccess = false
         }
     }
-
 }
 
 struct SettingsView_Previews: PreviewProvider {
     static var previews: some View {
         SettingsView()
-            .environmentObject(CleanupHistoryManager.shared)
     }
 }
