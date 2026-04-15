@@ -98,7 +98,32 @@ jobs:
           echo "Determined version: $VERSION"
           echo "Determined tag: $TAG_NAME"
 
-      - name: Verify preinstalled Swift toolchain
+      - name: Select Xcode 16 toolchain
+        run: |
+          SELECTED_XCODE=""
+
+          while IFS= read -r app; do
+            [ -d "$app" ] || continue
+
+            DEVELOPER_DIR="$app/Contents/Developer"
+            XCODE_VERSION=$(DEVELOPER_DIR="$DEVELOPER_DIR" xcodebuild -version 2>/dev/null | awk '/^Xcode / { print $2; exit }')
+
+            if echo "$XCODE_VERSION" | grep -Eq '^16\.'; then
+              SELECTED_XCODE="$app"
+            fi
+          done < <(find /Applications -maxdepth 1 -type d -name 'Xcode*.app' | sort -V)
+
+          if [ -z "$SELECTED_XCODE" ]; then
+            echo "Error: Xcode 16.x is required on the runner"
+            find /Applications -maxdepth 1 -type d -name 'Xcode*.app' | sort -V
+            exit 1
+          fi
+
+          sudo xcode-select -s "$SELECTED_XCODE/Contents/Developer"
+          echo "Selected Xcode: $SELECTED_XCODE"
+          xcodebuild -version
+
+      - name: Verify Swift toolchain
         run: |
           SWIFT_VERSION=$(swift --version | head -n 1)
           echo "Detected Swift toolchain: $SWIFT_VERSION"

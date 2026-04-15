@@ -1,5 +1,9 @@
 # SpaceGuard
 
+[![Build Status](https://github.com/NoTalkTech/SpaceGuard/actions/workflows/release.yml/badge.svg)](https://github.com/NoTalkTech/SpaceGuard/actions/workflows/release.yml)
+[![Latest Release](https://img.shields.io/github/v/release/NoTalkTech/SpaceGuard?display_name=tag)](https://github.com/NoTalkTech/SpaceGuard/releases/latest)
+[![License](https://img.shields.io/github/license/NoTalkTech/SpaceGuard)](https://github.com/NoTalkTech/SpaceGuard/blob/main/LICENSE)
+
 SpaceGuard is a macOS menu bar cleanup app built around one constraint: cleanup must stay explainable and reversible enough that users can trust it.
 
 The app combines:
