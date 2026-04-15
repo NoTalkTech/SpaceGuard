@@ -16,7 +16,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var menuStatusResetTask: Task<Void, Never>?
     private var diskInfoItem: NSMenuItem?
     private var activityItem: NSMenuItem?
-    private var progressMenuItem: NSMenuItem?
     private var analyzeItem: NSMenuItem?
     private var cleanupItem: NSMenuItem?
 
@@ -71,8 +70,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
         if let button = statusItem.button {
-            button.image = NSImage(systemSymbolName: "internaldrive", accessibilityDescription: "SpaceGuard")
-            button.image?.size = NSSize(width: 18, height: 18)
+            button.image = defaultStatusBarIcon()
+            button.imageScaling = .scaleProportionallyUpOrDown
         }
     }
 
@@ -90,13 +89,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         activityItem.isHidden = true
         menu.addItem(activityItem)
         self.activityItem = activityItem
-
-        let progressMenuItem = NSMenuItem()
-        progressMenuItem.isEnabled = false
-        progressMenuItem.isHidden = true
-        progressMenuItem.view = NSHostingView(rootView: MenuProgressView(progressTracker: progressTracker))
-        menu.addItem(progressMenuItem)
-        self.progressMenuItem = progressMenuItem
 
         menu.addItem(NSMenuItem.separator())
 
@@ -120,6 +112,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(NSMenuItem.separator())
 
+        let aboutItem = NSMenuItem(title: "About", action: #selector(showAbout), keyEquivalent: "")
+        aboutItem.target = self
+        menu.addItem(aboutItem)
+
         // Quit
         let quitItem = NSMenuItem(title: "Quit SpaceGuard", action: #selector(quitApp), keyEquivalent: "q")
         quitItem.target = self
@@ -131,7 +127,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func analyzeDisk() {
         activityItem?.isHidden = false
         activityItem?.title = "Scanning: Starting disk analysis..."
-        updateStatusButton(symbolName: "magnifyingglass.circle.fill", title: " Scanning", toolTip: "Starting disk analysis...")
+        updateDefaultStatusButton(title: " Scanning", toolTip: "Starting disk analysis...")
 
         Task {
             showNotification(title: "Disk Analysis", message: "Starting disk analysis...")
@@ -175,6 +171,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func openSettings() {
         presentSettings()
+    }
+
+    @objc func showAbout() {
+        NSApp.activate(ignoringOtherApps: true)
+
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? version
+
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = "SpaceGuard"
+        if build == version {
+            alert.informativeText = "Version \(version)"
+        } else {
+            alert.informativeText = "Version \(version) (\(build))"
+        }
+        alert.icon = NSApp.applicationIconImage
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 
     @MainActor
@@ -292,20 +307,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         if isWorking {
             menuStatusResetTask?.cancel()
-
-            activityItem?.isHidden = true
-            progressMenuItem?.isHidden = false
-
-            if let button = statusItem.button {
-                button.image = NSImage(systemSymbolName: progressTracker.isScanning ? "magnifyingglass.circle.fill" : "trash.circle.fill", accessibilityDescription: "SpaceGuard busy")
-                button.title = progressTracker.isScanning ? " Scanning" : " Cleaning"
-                button.toolTip = status
-            }
+            renderWorkingStatus(status)
             return
         }
 
         if isTerminalStatus(status) {
-            progressMenuItem?.isHidden = true
             activityItem?.isHidden = false
             activityItem?.title = status
             scheduleStatusReset()
@@ -318,7 +324,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        progressMenuItem?.isHidden = true
         activityItem?.isHidden = true
         resetStatusButtonAppearance()
     }
@@ -329,14 +334,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             try? await Task.sleep(nanoseconds: 4_000_000_000)
             guard let self = self else { return }
             guard !self.progressTracker.isScanning, !self.progressTracker.isCleaning else { return }
-            self.progressMenuItem?.isHidden = true
             self.activityItem?.isHidden = true
             self.resetStatusButtonAppearance()
         }
     }
 
     private func resetStatusButtonAppearance() {
-        updateStatusButton(symbolName: "internaldrive", title: "", toolTip: "SpaceGuard")
+        updateDefaultStatusButton(title: "", toolTip: "SpaceGuard")
     }
 
     private func isTerminalStatus(_ status: String) -> Bool {
@@ -357,6 +361,69 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         return status
+    }
+
+    private func renderWorkingStatus(_ status: String) {
+        activityItem?.isHidden = false
+        activityItem?.title = menuActivitySummary(for: status)
+
+        updateWorkingStatusButton(toolTip: status)
+    }
+
+    private func menuActivitySummary(for status: String) -> String {
+        if progressTracker.isScanning {
+            if progressTracker.filesProcessed > 0 {
+                return "Scanning... \(formatCompactCount(progressTracker.filesProcessed)) files"
+            }
+            return "Scanning..."
+        }
+
+        if progressTracker.isCleaning {
+            if progressTracker.totalFiles > 0 {
+                return "Cleaning... \(cleanupPercentageLabel())"
+            }
+            return "Cleaning..."
+        }
+
+        return progressSummary(for: status)
+    }
+
+    private func updateWorkingStatusButton(toolTip: String) {
+        if progressTracker.isScanning {
+            updateDefaultStatusButton(
+                title: progressTracker.filesProcessed > 0 ? " Scan \(formatCompactCount(progressTracker.filesProcessed))" : " Scan",
+                toolTip: toolTip
+            )
+            return
+        }
+
+        updateDefaultStatusButton(
+            title: " Clean \(cleanupPercentageLabel())",
+            toolTip: toolTip
+        )
+    }
+
+    private func cleanupPercentageLabel() -> String {
+        let clampedProgress = max(0, min(progressTracker.currentProgress, 1))
+        let percentage = Int((clampedProgress * 100).rounded())
+        return "\(percentage)%"
+    }
+
+    private func formatCompactCount(_ count: Int) -> String {
+        guard count >= 1000 else { return "\(count)" }
+
+        let units = ["k", "M", "B"]
+        var value = Double(count)
+        var unitIndex = -1
+
+        while value >= 1000, unitIndex + 1 < units.count {
+            value /= 1000
+            unitIndex += 1
+        }
+
+        let rounded = value >= 10 ? String(format: "%.0f", value) : String(format: "%.1f", value)
+        let normalized = rounded.hasSuffix(".0") ? String(rounded.dropLast(2)) : rounded
+        return normalized + units[max(unitIndex, 0)]
     }
 
     private func symbolName(for status: String) -> String {
@@ -387,23 +454,41 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard let button = statusItem.button else { return }
         button.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: "SpaceGuard")
         button.image?.size = NSSize(width: 18, height: 18)
+        button.attributedTitle = NSAttributedString(string: "")
         button.title = title
         button.toolTip = toolTip
     }
 
+    private func updateDefaultStatusButton(title: String, toolTip: String) {
+        guard let button = statusItem.button else { return }
+        button.image = defaultStatusBarIcon()
+        button.imageScaling = .scaleProportionallyUpOrDown
+        button.attributedTitle = NSAttributedString(string: "")
+        button.title = title
+        button.toolTip = toolTip
+    }
+
+    private func defaultStatusBarIcon() -> NSImage {
+        MenuBarIcon.defaultImage(pointSize: 26)
+    }
+
     @MainActor
     private func startQuickCleanupReview() async {
-        progressTracker.isCleaning = true
-        progressTracker.currentOperation = "Quick cleanup..."
-        progressTracker.currentStatus = "Scanning quick cleanup locations"
-        progressTracker.currentProgress = 0
-        progressTracker.filesProcessed = 0
-        progressTracker.totalFiles = 0
-        progressTracker.spaceFreed = 0
+        progressTracker.setDisplayState(
+            isScanning: false,
+            isCleaning: true,
+            currentProgress: 0,
+            currentStatus: "Scanning quick cleanup locations",
+            currentOperation: "Quick cleanup...",
+            filesProcessed: 0,
+            totalFiles: 0,
+            spaceFreed: 0,
+            force: true
+        )
 
         activityItem?.isHidden = false
         activityItem?.title = "Cleanup: Scanning quick cleanup locations"
-        updateStatusButton(symbolName: "trash.circle.fill", title: " Cleaning", toolTip: "Scanning quick cleanup locations")
+        updateDefaultStatusButton(title: " Cleaning", toolTip: "Scanning quick cleanup locations")
         showNotification(title: "Quick Cleanup", message: "Scanning for files to clean...")
 
         let rules = RulesPersistenceService().loadRules()
@@ -420,10 +505,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let scannedFilesBeforePath = cumulativeScannedFiles
             let totalTargets = max(scanTargets.count, 1)
 
-            progressTracker.filesProcessed = cumulativeScannedFiles
-            progressTracker.totalFiles = max(cumulativeScannedFiles, scanTargets.count)
-            progressTracker.currentProgress = Double(index) / Double(totalTargets)
-            progressTracker.currentStatus = "Scanning quick cleanup locations (\(index + 1)/\(scanTargets.count))"
+            progressTracker.setDisplayState(
+                currentProgress: Double(index) / Double(totalTargets),
+                currentStatus: "Scanning quick cleanup locations (\(index + 1)/\(scanTargets.count))",
+                filesProcessed: cumulativeScannedFiles,
+                totalFiles: max(cumulativeScannedFiles, scanTargets.count)
+            )
 
             do {
                 let scanResult = try await scanner.scanDirectory(at: path) { [weak self] processed, _ in
@@ -433,21 +520,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                         let scannedFiles = scannedFilesBeforePath + processed
                         let pathFraction = Double(processed) / Double(processed + 200)
 
-                        self.progressTracker.filesProcessed = scannedFiles
-                        self.progressTracker.totalFiles = max(scannedFiles, scanTargets.count)
-                        self.progressTracker.currentProgress = min(
-                            (Double(index) + pathFraction) / Double(totalTargets),
-                            0.99
+                        self.progressTracker.setDisplayState(
+                            currentProgress: min(
+                                (Double(index) + pathFraction) / Double(totalTargets),
+                                0.99
+                            ),
+                            currentStatus: "Scanning quick cleanup: \(scannedFiles) files in \(index + 1)/\(scanTargets.count) locations",
+                            filesProcessed: scannedFiles,
+                            totalFiles: max(scannedFiles, scanTargets.count)
                         )
-                        self.progressTracker.currentStatus = "Scanning quick cleanup: \(scannedFiles) files in \(index + 1)/\(scanTargets.count) locations"
                     }
                 }
 
                 cumulativeScannedFiles += scanResult.fileCount
-                progressTracker.filesProcessed = cumulativeScannedFiles
-                progressTracker.totalFiles = max(cumulativeScannedFiles, scanTargets.count)
-                progressTracker.currentProgress = Double(index + 1) / Double(totalTargets)
-                progressTracker.currentStatus = "Scanning quick cleanup: \(cumulativeScannedFiles) files in \(index + 1)/\(scanTargets.count) locations"
+                progressTracker.setDisplayState(
+                    currentProgress: Double(index + 1) / Double(totalTargets),
+                    currentStatus: "Scanning quick cleanup: \(cumulativeScannedFiles) files in \(index + 1)/\(scanTargets.count) locations",
+                    filesProcessed: cumulativeScannedFiles,
+                    totalFiles: max(cumulativeScannedFiles, scanTargets.count)
+                )
 
                 let analyzedFiles = analyzer.analyzeFiles(scanResult.files, rules: rules)
                 allFiles.append(contentsOf: analyzedFiles)
@@ -467,13 +558,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         guard !lowRiskFiles.isEmpty else {
-            progressTracker.isCleaning = false
-            progressTracker.currentStatus = "Quick cleanup complete: 0 files deleted, 0 KB freed"
+            progressTracker.setDisplayState(
+                isCleaning: false,
+                currentStatus: "Quick cleanup complete: 0 files deleted, 0 KB freed",
+                force: true
+            )
             showNotification(title: "Quick Cleanup", message: "No low-risk files found to clean")
             return
         }
 
-        progressTracker.currentStatus = "Quick cleanup review ready: \(lowRiskFiles.count) files"
+        progressTracker.setDisplayState(
+            currentStatus: "Quick cleanup review ready: \(lowRiskFiles.count) files",
+            force: true
+        )
         showQuickCleanupConfirmation(files: lowRiskFiles, rules: rules)
     }
 
@@ -493,8 +590,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             onCancel: { [weak self] in
                 self?.quickCleanupWindow?.close()
                 self?.quickCleanupWindow = nil
-                self?.progressTracker.isCleaning = false
-                self?.progressTracker.currentStatus = "Quick cleanup cancelled"
+                self?.progressTracker.setDisplayState(
+                    isCleaning: false,
+                    currentStatus: "Quick cleanup cancelled",
+                    force: true
+                )
             }
         )
 
@@ -516,30 +616,38 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @MainActor
     private func performQuickCleanupSelections(_ selections: [FileSelection]) async {
-        progressTracker.isCleaning = true
-        progressTracker.currentStatus = "Starting cleanup"
-        progressTracker.currentProgress = 0
-        progressTracker.filesProcessed = 0
-        progressTracker.totalFiles = selections.count
-        progressTracker.spaceFreed = 0
+        progressTracker.setDisplayState(
+            isCleaning: true,
+            currentProgress: 0,
+            currentStatus: "Starting cleanup",
+            filesProcessed: 0,
+            totalFiles: selections.count,
+            spaceFreed: 0,
+            force: true
+        )
 
         let result = await dependencies.cleanupEngine.performBatchCleanup(selections: selections) { [weak self] current, total, freed in
             Task { @MainActor in
                 guard let self = self else { return }
-                self.progressTracker.filesProcessed = current
-                self.progressTracker.totalFiles = total
-                self.progressTracker.spaceFreed = freed
-                self.progressTracker.currentProgress = Double(current) / Double(max(total, 1))
-                self.progressTracker.currentStatus = "Cleaned \(current)/\(total) files, freed \(ByteCountFormatter.string(fromByteCount: freed, countStyle: .file))"
+                self.progressTracker.setDisplayState(
+                    currentProgress: Double(current) / Double(max(total, 1)),
+                    currentStatus: "Cleaned \(current)/\(total) files, freed \(ByteCountFormatter.string(fromByteCount: freed, countStyle: .file))",
+                    filesProcessed: current,
+                    totalFiles: total,
+                    spaceFreed: freed
+                )
             }
         }
 
-        progressTracker.isCleaning = false
-        progressTracker.currentStatus = "Quick cleanup complete: \(result.filesDeleted) files deleted, freed \(ByteCountFormatter.string(fromByteCount: result.spaceFreed, countStyle: .file))"
-        progressTracker.currentProgress = 1
-        progressTracker.filesProcessed = result.filesDeleted
-        progressTracker.totalFiles = selections.count
-        progressTracker.spaceFreed = result.spaceFreed
+        progressTracker.setDisplayState(
+            isCleaning: false,
+            currentProgress: 1,
+            currentStatus: "Quick cleanup complete: \(result.filesDeleted) files deleted, freed \(ByteCountFormatter.string(fromByteCount: result.spaceFreed, countStyle: .file))",
+            filesProcessed: result.filesDeleted,
+            totalFiles: selections.count,
+            spaceFreed: result.spaceFreed,
+            force: true
+        )
 
         let record = CleanupHistoryRecord(
             id: UUID(),
@@ -574,8 +682,11 @@ extension AppDelegate: NSWindowDelegate {
         if let window = notification.object as? NSWindow, window == quickCleanupWindow {
             if progressTracker.isCleaning,
                progressTracker.currentStatus.hasPrefix("Quick cleanup review ready") || progressTracker.currentStatus == "Starting cleanup" {
-                progressTracker.isCleaning = false
-                progressTracker.currentStatus = "Quick cleanup cancelled"
+                progressTracker.setDisplayState(
+                    isCleaning: false,
+                    currentStatus: "Quick cleanup cancelled",
+                    force: true
+                )
             }
             quickCleanupWindow = nil
         }
