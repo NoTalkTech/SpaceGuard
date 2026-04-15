@@ -75,14 +75,14 @@ struct RiskLevelSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Button(action: onExpand) {
-                HStack(spacing: 10) {
-                    Button(action: onToggle) {
-                        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                            .foregroundColor(isSelected ? riskColor : .secondary)
-                    }
-                    .buttonStyle(.plain)
+            HStack(spacing: 10) {
+                Button(action: onToggle) {
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .foregroundColor(isSelected ? riskColor : .secondary)
+                }
+                .buttonStyle(.plain)
 
+                HStack(spacing: 10) {
                     VStack(alignment: .leading, spacing: 3) {
                         HStack {
                             Text(title)
@@ -108,8 +108,8 @@ struct RiskLevelSection: View {
                         .foregroundColor(.secondary)
                 }
                 .contentShape(Rectangle())
+                .onTapGesture(perform: onExpand)
             }
-            .buttonStyle(.plain)
 
             if isExpanded {
                 VStack(alignment: .leading, spacing: 12) {

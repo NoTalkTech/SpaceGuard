@@ -8,6 +8,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem!
     var menu: NSMenu!
     var settingsWindow: NSWindow?
+    var quickCleanupWindow: NSWindow?
     private var diskStats: DiskStats?
     @MainActor private lazy var dependencies = AppDependencies()
     @MainActor private let settingsNavigationState = SettingsNavigationState()
@@ -141,40 +142,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func quickCleanup() {
-        activityItem?.isHidden = false
-        activityItem?.title = "Cleanup: Starting quick cleanup..."
-        updateStatusButton(symbolName: "trash.circle.fill", title: " Cleaning", toolTip: "Starting quick cleanup...")
+        guard !progressTracker.isScanning, !progressTracker.isCleaning else {
+            showNotification(title: "Quick Cleanup", message: "Another operation is already in progress")
+            return
+        }
 
-        Task {
-            showNotification(title: "Quick Cleanup", message: "Scanning for files to clean...")
-
-            let rules = RulesPersistenceService().loadRules()
-            guard let result = await progressTracker.quickCleanup(rules: rules) else {
-                showNotification(title: "Quick Cleanup", message: "Cleanup is already in progress")
-                return
-            }
-
-            if !result.errors.isEmpty {
-                let quickPaths = dependencies.cleanupEngine.getQuickCleanupPaths()
-                let scanErrorCount = result.errors.filter { quickPaths.contains($0.filePath) }.count
-                if scanErrorCount > 0 {
-                    showNotification(
-                        title: "Quick Cleanup Warning",
-                        message: "Encountered \(scanErrorCount) error(s) while scanning, some files may not be included"
-                    )
-                }
-            }
-
-            if result.filesDeleted == 0 {
-                showNotification(title: "Quick Cleanup", message: "No low-risk files found to clean")
-                return
-            }
-
-            let formattedFreed = ByteCountFormatter.string(fromByteCount: result.spaceFreed, countStyle: .file)
-            showNotification(
-                title: "Quick Cleanup Complete",
-                message: "Freed \(formattedFreed) by deleting \(result.filesDeleted) files"
-            )
+        Task { @MainActor in
+            await startQuickCleanupReview()
         }
     }
 
@@ -412,12 +386,169 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         button.title = title
         button.toolTip = toolTip
     }
+
+    @MainActor
+    private func startQuickCleanupReview() async {
+        progressTracker.isCleaning = true
+        progressTracker.currentOperation = "Quick cleanup..."
+        progressTracker.currentStatus = "Scanning quick cleanup locations"
+        progressTracker.currentProgress = 0
+        progressTracker.filesProcessed = 0
+        progressTracker.totalFiles = 0
+        progressTracker.spaceFreed = 0
+
+        activityItem?.isHidden = false
+        activityItem?.title = "Cleanup: Scanning quick cleanup locations"
+        updateStatusButton(symbolName: "trash.circle.fill", title: " Cleaning", toolTip: "Scanning quick cleanup locations")
+        showNotification(title: "Quick Cleanup", message: "Scanning for files to clean...")
+
+        let rules = RulesPersistenceService().loadRules()
+        let scanner = DiskScanner()
+        let analyzer = RiskAnalyzer()
+        let cachePaths = dependencies.cleanupEngine.getQuickCleanupPaths()
+
+        var allFiles: [FileItem] = []
+        var scanErrors: [Error] = []
+
+        for (index, path) in cachePaths.enumerated() {
+            guard FileManager.default.fileExists(atPath: path) else { continue }
+
+            progressTracker.filesProcessed = index
+            progressTracker.totalFiles = cachePaths.count
+            progressTracker.currentProgress = Double(index) / Double(max(cachePaths.count, 1))
+            progressTracker.currentStatus = "Scanning quick cleanup locations (\(index + 1)/\(cachePaths.count))"
+
+            do {
+                let scanResult = try await scanner.scanDirectory(at: path) { _, _ in }
+                let analyzedFiles = analyzer.analyzeFiles(scanResult.files, rules: rules)
+                allFiles.append(contentsOf: analyzedFiles)
+            } catch {
+                scanErrors.append(error)
+            }
+        }
+
+        let lowRiskFiles = allFiles.filter { $0.riskLevel == .low }
+
+        if !scanErrors.isEmpty {
+            let scanErrorCount = scanErrors.count
+            showNotification(
+                title: "Quick Cleanup Warning",
+                message: "Encountered \(scanErrorCount) error(s) while scanning, some files may not be included"
+            )
+        }
+
+        guard !lowRiskFiles.isEmpty else {
+            progressTracker.isCleaning = false
+            progressTracker.currentStatus = "Quick cleanup complete: 0 files deleted, 0 KB freed"
+            showNotification(title: "Quick Cleanup", message: "No low-risk files found to clean")
+            return
+        }
+
+        progressTracker.currentStatus = "Quick cleanup review ready: \(lowRiskFiles.count) files"
+        showQuickCleanupConfirmation(files: lowRiskFiles, rules: rules)
+    }
+
+    @MainActor
+    private func showQuickCleanupConfirmation(files: [FileItem], rules: CleanupRules) {
+        let confirmationView = CleanupConfirmationView(
+            files: files,
+            rules: rules,
+            onConfirm: { [weak self] selections in
+                guard let self = self else { return }
+                self.quickCleanupWindow?.close()
+                self.quickCleanupWindow = nil
+                Task { @MainActor in
+                    await self.performQuickCleanupSelections(selections)
+                }
+            },
+            onCancel: { [weak self] in
+                self?.quickCleanupWindow?.close()
+                self?.quickCleanupWindow = nil
+                self?.progressTracker.isCleaning = false
+                self?.progressTracker.currentStatus = "Quick cleanup cancelled"
+            }
+        )
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 720, height: 560),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        window.center()
+        window.title = "Confirm Quick Cleanup"
+        window.isReleasedWhenClosed = false
+        window.contentView = NSHostingView(rootView: confirmationView)
+
+        quickCleanupWindow = window
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @MainActor
+    private func performQuickCleanupSelections(_ selections: [FileSelection]) async {
+        progressTracker.isCleaning = true
+        progressTracker.currentStatus = "Starting cleanup"
+        progressTracker.currentProgress = 0
+        progressTracker.filesProcessed = 0
+        progressTracker.totalFiles = selections.count
+        progressTracker.spaceFreed = 0
+
+        let result = await dependencies.cleanupEngine.performBatchCleanup(selections: selections) { [weak self] current, total, freed in
+            Task { @MainActor in
+                guard let self = self else { return }
+                self.progressTracker.filesProcessed = current
+                self.progressTracker.totalFiles = total
+                self.progressTracker.spaceFreed = freed
+                self.progressTracker.currentProgress = Double(current) / Double(max(total, 1))
+                self.progressTracker.currentStatus = "Cleaned \(current)/\(total) files, freed \(ByteCountFormatter.string(fromByteCount: freed, countStyle: .file))"
+            }
+        }
+
+        progressTracker.isCleaning = false
+        progressTracker.currentStatus = "Quick cleanup complete: \(result.filesDeleted) files deleted, freed \(ByteCountFormatter.string(fromByteCount: result.spaceFreed, countStyle: .file))"
+        progressTracker.currentProgress = 1
+        progressTracker.filesProcessed = result.filesDeleted
+        progressTracker.totalFiles = selections.count
+        progressTracker.spaceFreed = result.spaceFreed
+
+        let record = CleanupHistoryRecord(
+            id: UUID(),
+            timestamp: Date(),
+            cleanupType: .quick,
+            filesDeleted: result.filesDeleted,
+            spaceFreed: result.spaceFreed,
+            duration: result.duration,
+            errors: result.errors.count,
+            wasCancelled: false
+        )
+        dependencies.historyManager.addRecord(record)
+
+        if result.filesDeleted == 0 {
+            showNotification(title: "Quick Cleanup", message: "No low-risk files were deleted")
+            return
+        }
+
+        let formattedFreed = ByteCountFormatter.string(fromByteCount: result.spaceFreed, countStyle: .file)
+        showNotification(
+            title: "Quick Cleanup Complete",
+            message: "Freed \(formattedFreed) by deleting \(result.filesDeleted) files"
+        )
+    }
 }
 
 extension AppDelegate: NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         if let window = notification.object as? NSWindow, window == settingsWindow {
             settingsWindow = nil
+        }
+        if let window = notification.object as? NSWindow, window == quickCleanupWindow {
+            if progressTracker.isCleaning,
+               progressTracker.currentStatus.hasPrefix("Quick cleanup review ready") || progressTracker.currentStatus == "Starting cleanup" {
+                progressTracker.isCleaning = false
+                progressTracker.currentStatus = "Quick cleanup cancelled"
+            }
+            quickCleanupWindow = nil
         }
     }
 }

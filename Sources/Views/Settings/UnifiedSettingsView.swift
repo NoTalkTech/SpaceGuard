@@ -150,6 +150,17 @@ struct UnifiedSettingsView: View {
                                 Text(override.riskLevel.rawValue)
                                     .font(.caption)
                                     .foregroundColor(.secondary)
+
+                                Button {
+                                    if let index = rules.customRiskOverrides.firstIndex(where: { $0.id == override.id }) {
+                                        rules.customRiskOverrides.remove(at: index)
+                                    }
+                                } label: {
+                                    Image(systemName: "trash")
+                                        .foregroundColor(.red)
+                                        .font(.system(size: 11))
+                                }
+                                .buttonStyle(.plain)
                             }
                             .padding(.vertical, 4)
                             .padding(.horizontal, 8)
