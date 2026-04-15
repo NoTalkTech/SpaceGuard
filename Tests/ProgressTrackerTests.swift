@@ -80,6 +80,55 @@ final class ProgressTrackerTests: XCTestCase {
         XCTAssertEqual(historyManager.records.first?.filesDeleted, cleanupResult.filesDeleted)
         XCTAssertEqual(historyManager.records.first?.spaceFreed, cleanupResult.spaceFreed)
     }
+
+    func testSetDisplayStateThrottlesRapidUpdatesButFlushesLatestState() async {
+        let tracker = ProgressTracker(
+            scannerFactory: {
+                MockDiskScanner(result: .init(totalSize: 0, fileCount: 0, files: [], duration: 0))
+            },
+            engineFactory: {
+                MockCleanupEngine()
+            },
+            historyManager: CleanupHistoryManager(),
+            minimumUIUpdateInterval: 0.2
+        )
+
+        tracker.setDisplayState(
+            isScanning: true,
+            currentStatus: "Scanned 100 files",
+            filesProcessed: 100,
+            totalFiles: 500
+        )
+        XCTAssertEqual(tracker.currentStatus, "Scanned 100 files")
+        XCTAssertEqual(tracker.filesProcessed, 100)
+
+        tracker.setDisplayState(
+            currentStatus: "Scanned 200 files",
+            filesProcessed: 200,
+            totalFiles: 500
+        )
+
+        XCTAssertEqual(tracker.currentStatus, "Scanned 100 files")
+        XCTAssertEqual(tracker.filesProcessed, 100)
+
+        try? await Task.sleep(nanoseconds: 300_000_000)
+
+        XCTAssertEqual(tracker.currentStatus, "Scanned 200 files")
+        XCTAssertEqual(tracker.filesProcessed, 200)
+
+        tracker.setDisplayState(
+            isScanning: false,
+            currentProgress: 1,
+            currentStatus: "Scan complete",
+            filesProcessed: 500,
+            totalFiles: 500,
+            force: true
+        )
+
+        XCTAssertEqual(tracker.currentStatus, "Scan complete")
+        XCTAssertEqual(tracker.currentProgress, 1, accuracy: 0.0001)
+        XCTAssertEqual(tracker.filesProcessed, 500)
+    }
 }
 
 private final class MockDiskScanner: DiskScannerProtocol {
