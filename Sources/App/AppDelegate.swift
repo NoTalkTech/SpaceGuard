@@ -11,12 +11,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var quickCleanupWindow: NSWindow?
     private var diskStats: DiskStats?
     @MainActor private lazy var dependencies = AppDependencies()
-    @MainActor private let settingsNavigationState = SettingsNavigationState()
     private let filePreviewer = FilePreviewer()
     private var cancellables = Set<AnyCancellable>()
     private var menuStatusResetTask: Task<Void, Never>?
     private var diskInfoItem: NSMenuItem?
     private var activityItem: NSMenuItem?
+    private var progressMenuItem: NSMenuItem?
     private var analyzeItem: NSMenuItem?
     private var cleanupItem: NSMenuItem?
 
@@ -90,6 +90,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         activityItem.isHidden = true
         menu.addItem(activityItem)
         self.activityItem = activityItem
+
+        let progressMenuItem = NSMenuItem()
+        progressMenuItem.isEnabled = false
+        progressMenuItem.isHidden = true
+        progressMenuItem.view = NSHostingView(rootView: MenuProgressView(progressTracker: progressTracker))
+        menu.addItem(progressMenuItem)
+        self.progressMenuItem = progressMenuItem
 
         menu.addItem(NSMenuItem.separator())
 
@@ -167,19 +174,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func openSettings() {
-        presentSettings(selecting: .settings)
+        presentSettings()
     }
 
     @MainActor
-    private func presentSettings(selecting tab: SettingsView.SidebarTab) {
-        settingsNavigationState.selectedTab = tab
-
+    private func presentSettings() {
         if settingsWindow == nil {
-            let settingsView = SettingsView(
-                progressTracker: dependencies.progressTracker,
-                navigationState: settingsNavigationState
-            )
-            .environmentObject(dependencies.historyManager)
+            let settingsView = SettingsView()
             let window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 700, height: 500),
                 styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -292,8 +293,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if isWorking {
             menuStatusResetTask?.cancel()
 
-            activityItem?.isHidden = false
-            activityItem?.title = progressSummary(for: status)
+            activityItem?.isHidden = true
+            progressMenuItem?.isHidden = false
 
             if let button = statusItem.button {
                 button.image = NSImage(systemSymbolName: progressTracker.isScanning ? "magnifyingglass.circle.fill" : "trash.circle.fill", accessibilityDescription: "SpaceGuard busy")
@@ -304,6 +305,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         if isTerminalStatus(status) {
+            progressMenuItem?.isHidden = true
             activityItem?.isHidden = false
             activityItem?.title = status
             scheduleStatusReset()
@@ -316,6 +318,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        progressMenuItem?.isHidden = true
         activityItem?.isHidden = true
         resetStatusButtonAppearance()
     }
@@ -326,6 +329,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             try? await Task.sleep(nanoseconds: 4_000_000_000)
             guard let self = self else { return }
             guard !self.progressTracker.isScanning, !self.progressTracker.isCleaning else { return }
+            self.progressMenuItem?.isHidden = true
             self.activityItem?.isHidden = true
             self.resetStatusButtonAppearance()
         }
@@ -405,21 +409,46 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let rules = RulesPersistenceService().loadRules()
         let scanner = DiskScanner()
         let analyzer = RiskAnalyzer()
-        let cachePaths = dependencies.cleanupEngine.getQuickCleanupPaths()
+        let scanTargets = dependencies.cleanupEngine.getQuickCleanupPaths()
+            .filter { FileManager.default.fileExists(atPath: $0) }
 
         var allFiles: [FileItem] = []
         var scanErrors: [Error] = []
+        var cumulativeScannedFiles = 0
 
-        for (index, path) in cachePaths.enumerated() {
-            guard FileManager.default.fileExists(atPath: path) else { continue }
+        for (index, path) in scanTargets.enumerated() {
+            let scannedFilesBeforePath = cumulativeScannedFiles
+            let totalTargets = max(scanTargets.count, 1)
 
-            progressTracker.filesProcessed = index
-            progressTracker.totalFiles = cachePaths.count
-            progressTracker.currentProgress = Double(index) / Double(max(cachePaths.count, 1))
-            progressTracker.currentStatus = "Scanning quick cleanup locations (\(index + 1)/\(cachePaths.count))"
+            progressTracker.filesProcessed = cumulativeScannedFiles
+            progressTracker.totalFiles = max(cumulativeScannedFiles, scanTargets.count)
+            progressTracker.currentProgress = Double(index) / Double(totalTargets)
+            progressTracker.currentStatus = "Scanning quick cleanup locations (\(index + 1)/\(scanTargets.count))"
 
             do {
-                let scanResult = try await scanner.scanDirectory(at: path) { _, _ in }
+                let scanResult = try await scanner.scanDirectory(at: path) { [weak self] processed, _ in
+                    guard let self = self else { return }
+
+                    Task { @MainActor in
+                        let scannedFiles = scannedFilesBeforePath + processed
+                        let pathFraction = Double(processed) / Double(processed + 200)
+
+                        self.progressTracker.filesProcessed = scannedFiles
+                        self.progressTracker.totalFiles = max(scannedFiles, scanTargets.count)
+                        self.progressTracker.currentProgress = min(
+                            (Double(index) + pathFraction) / Double(totalTargets),
+                            0.99
+                        )
+                        self.progressTracker.currentStatus = "Scanning quick cleanup: \(scannedFiles) files in \(index + 1)/\(scanTargets.count) locations"
+                    }
+                }
+
+                cumulativeScannedFiles += scanResult.fileCount
+                progressTracker.filesProcessed = cumulativeScannedFiles
+                progressTracker.totalFiles = max(cumulativeScannedFiles, scanTargets.count)
+                progressTracker.currentProgress = Double(index + 1) / Double(totalTargets)
+                progressTracker.currentStatus = "Scanning quick cleanup: \(cumulativeScannedFiles) files in \(index + 1)/\(scanTargets.count) locations"
+
                 let analyzedFiles = analyzer.analyzeFiles(scanResult.files, rules: rules)
                 allFiles.append(contentsOf: analyzedFiles)
             } catch {
