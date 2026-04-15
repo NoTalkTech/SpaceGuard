@@ -9,6 +9,15 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 APP_NAME="SpaceGuard"
 APP_BUNDLE="$PROJECT_DIR/$APP_NAME.app"
 RESOURCES_DIR="$PROJECT_DIR/Sources/Resources"
+APP_VERSION="${SPACEGUARD_VERSION:-${VERSION:-}}"
+
+if [ -z "$APP_VERSION" ] && command -v git >/dev/null 2>&1; then
+    APP_VERSION="$(git -C "$PROJECT_DIR" describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')"
+fi
+
+if [ -z "$APP_VERSION" ]; then
+    APP_VERSION="1.0"
+fi
 
 # Allow CI to point packaging at a dedicated scratch build root.
 if [ -n "${SPACEGUARD_BUILD_DIR:-}" ]; then
@@ -41,6 +50,7 @@ fi
 
 echo "Creating $APP_NAME.app bundle..."
 echo "Using build directory: $BUILD_DIR"
+echo "Using app version: $APP_VERSION"
 
 # Clean up existing bundle
 rm -rf "$APP_BUNDLE"
@@ -76,9 +86,9 @@ cat > "$APP_BUNDLE/Contents/Info.plist" << EOF
     <key>CFBundleDisplayName</key>
     <string>$APP_NAME</string>
     <key>CFBundleVersion</key>
-    <string>1.0</string>
+    <string>$APP_VERSION</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
+    <string>$APP_VERSION</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>LSMinimumSystemVersion</key>

@@ -181,7 +181,26 @@ jobs:
           ls -la scripts/
 
       - name: Create App Bundle
-        run: ./scripts/create-app-bundle.sh
+        run: |
+          SPACEGUARD_VERSION="${{ env.VERSION }}" ./scripts/create-app-bundle.sh
+
+      - name: Verify App Bundle Version
+        run: |
+          SHORT_VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "SpaceGuard.app/Contents/Info.plist")
+          BUILD_VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "SpaceGuard.app/Contents/Info.plist")
+
+          echo "App bundle short version: $SHORT_VERSION"
+          echo "App bundle build version: $BUILD_VERSION"
+
+          if [ "$SHORT_VERSION" != "${{ env.VERSION }}" ]; then
+            echo "Error: CFBundleShortVersionString mismatch"
+            exit 1
+          fi
+
+          if [ "$BUILD_VERSION" != "${{ env.VERSION }}" ]; then
+            echo "Error: CFBundleVersion mismatch"
+            exit 1
+          fi
 
       - name: Create DMG
         run: |
@@ -192,14 +211,7 @@ jobs:
           echo "Creating DMG with version: $VERSION"
           echo "Tag: $TAG_NAME"
 
-          # Update version in make-dmg.sh if needed
-          sed -i.bak "s/VERSION=\"1.0.0\"/VERSION=\"$VERSION\"/" scripts/make-dmg.sh
-          ./scripts/make-dmg.sh
-
-          # Restore original file if backup exists
-          if [ -f "scripts/make-dmg.sh.bak" ]; then
-            mv scripts/make-dmg.sh.bak scripts/make-dmg.sh
-          fi
+          SPACEGUARD_VERSION="$VERSION" ./scripts/make-dmg.sh "$VERSION"
 
           DMG_NAME="SpaceGuard-$VERSION.dmg"
           echo "DMG_NAME=$DMG_NAME" >> $GITHUB_ENV
