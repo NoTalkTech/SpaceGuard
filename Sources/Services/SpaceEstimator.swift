@@ -171,7 +171,6 @@ class SpaceEstimator {
     }
 }
 
-extension SpaceEstimator: SpaceEstimating {}
 extension CleanupScenariosDetector: CleanupScenarioDetecting {}
 
 /// 空间预估报告

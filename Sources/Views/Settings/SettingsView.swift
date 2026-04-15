@@ -4,7 +4,7 @@ import SwiftUI
 final class SettingsNavigationState: ObservableObject {
     @Published var selectedTab: SettingsView.SidebarTab
 
-    init(selectedTab: SettingsView.SidebarTab = .general) {
+    init(selectedTab: SettingsView.SidebarTab = .cleanup) {
         self.selectedTab = selectedTab
     }
 }
@@ -53,27 +53,15 @@ struct SettingsView: View {
     }
 
     enum SidebarTab: String, CaseIterable {
-        case general = "General"
         case cleanup = "Cleanup"
-        case fileTypes = "File Types"
-        case riskManagement = "Risk Management"
-        case diskInfo = "Disk Info"
-        case advanced = "Advanced"
-        case presetCleanup = "Preset Cleanup"
+        case settings = "Settings"
         case history = "History"
-        case statistics = "Statistics"
 
         var icon: String {
             switch self {
-            case .general: return "gear"
             case .cleanup: return "trash"
-            case .fileTypes: return "doc.text"
-            case .riskManagement: return "exclamationmark.triangle"
-            case .diskInfo: return "internaldrive"
-            case .advanced: return "slider.horizontal.3"
-            case .presetCleanup: return "checklist"
+            case .settings: return "gear"
             case .history: return "clock.arrow.circlepath"
-            case .statistics: return "chart.bar.xaxis"
             }
         }
     }
@@ -98,14 +86,11 @@ struct SettingsView: View {
                             .background(
                                 RoundedRectangle(cornerRadius: 6)
                                     .fill(navigationState.selectedTab == tab ? Color.accentColor.opacity(0.2) : Color.clear)
-                                    .animation(.easeInOut(duration: 0.2), value: navigationState.selectedTab)
                             )
                             .cornerRadius(6)
                             .contentShape(Rectangle())
                             .onTapGesture {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                    navigationState.selectedTab = tab
-                                }
+                                navigationState.selectedTab = tab
                             }
                         }
                     }
@@ -122,14 +107,6 @@ struct SettingsView: View {
             // Content area
             Group {
                 switch navigationState.selectedTab {
-                case .general:
-                    GeneralSettingsView(
-                        rules: $rules,
-                        showResetConfirmation: $showResetConfirmation,
-                        showSaveSuccess: $showSaveSuccess,
-                        saveMessage: $saveMessage,
-                        saveRules: saveRules
-                    )
                 case .cleanup:
                     CleanupSettingsView(
                         progressTracker: progressTracker,
@@ -138,37 +115,22 @@ struct SettingsView: View {
                         loadDiskStats: loadDiskStats,
                         historyManager: historyManager
                     )
-                case .fileTypes:
-                    FileTypesSettingsView(
+                case .settings:
+                    UnifiedSettingsView(
                         rules: $rules,
-                        showFileTypeRulesEditor: $showFileTypeRulesEditor
+                        showResetConfirmation: $showResetConfirmation,
+                        showAddOverride: $showAddOverride,
+                        showAddPattern: $showAddPattern,
+                        showConfigureSchedule: $showConfigureSchedule,
+                        showFileTypeRulesEditor: $showFileTypeRulesEditor,
+                        showSaveSuccess: $showSaveSuccess,
+                        saveMessage: $saveMessage,
+                        saveRules: saveRules
                     )
-                case .riskManagement:
-                    RiskManagementSettingsView(
-                        rules: $rules,
-                        showAddOverride: $showAddOverride
-                    )
-                case .diskInfo:
-                    DiskInfoSettingsView(rules: $rules)
-                case .presetCleanup:
-                    CleanupPresetsView()
                 case .history:
                     CleanupHistoryView(historyManager: historyManager)
-                case .statistics:
-                    CleanupStatisticsView(historyManager: historyManager)
-                case .advanced:
-                    AdvancedSettingsView(
-                        rules: $rules,
-                        showAddPattern: $showAddPattern,
-                        showConfigureSchedule: $showConfigureSchedule
-                    )
                 }
             }
-            .transition(.asymmetric(
-                insertion: .move(edge: .trailing).combined(with: .opacity),
-                removal: .move(edge: .leading).combined(with: .opacity)
-            ))
-            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: navigationState.selectedTab)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding()
             .background(Color(nsColor: .windowBackgroundColor))

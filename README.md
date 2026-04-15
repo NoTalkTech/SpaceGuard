@@ -25,7 +25,6 @@ Cleanup behavior is driven by:
 - include and exclude paths
 - file type rules
 - custom risk overrides
-- built-in cleanup presets
 - scenario-specific safeguards
 
 ## Main User Flows
@@ -38,29 +37,25 @@ The menu bar exposes a minimal foreground workflow:
 - `Quick Cleanup`
 - `Settings...`
 
-`Analyze Disk` and `Quick Cleanup` now route into the `Cleanup` settings tab so the user sees:
+`Analyze Disk` and `Quick Cleanup` now report foreground state directly in the menu bar so the user sees:
 
-- live progress
+- immediate activity text
 - terminal status text
-- in-window completion banners
+- completion state without relying on notifications
 
-This avoids a dead-feeling UX when macOS notifications are unavailable or ignored.
+The user can open the main window when deeper review is needed, but the first feedback stays in the menu bar.
 
-### Settings-Driven Cleanup
+### Main Window
 
-The main settings window contains tabs for:
+The main window is intentionally small and centered on the cleanup loop:
 
-- General
 - Cleanup
-- File Types
-- Risk Management
-- Disk Info
-- Advanced
-- Preset Cleanup
+- Settings
 - History
-- Statistics
 
-The `Cleanup` tab is the operational control center for scan and quick cleanup.
+- `Cleanup` is the operational control center for scan and quick cleanup
+- `Settings` contains the rule and scope configuration needed to support cleanup
+- `History` provides lightweight auditability for past runs
 
 ### Cleanup Confirmation
 
@@ -69,25 +64,11 @@ The cleanup confirmation flow is designed for large result sets.
 It supports:
 
 - per-risk grouping
-- directory-first review mode
-- file-level review mode
-- search and sorting
-- paged loading instead of rendering every row at once
-- inline directory expansion to inspect files in place
-- directory utility actions such as `Open` and `Copy Path`
+- representative directories
+- representative large files
+- direct `Open` actions for quick Finder inspection
 
-This prevents the app from collapsing under very large candidate lists while still letting the user inspect what will be removed.
-
-### Preset Cleanup
-
-Built-in presets currently include:
-
-- `safe`: conservative cleanup for most users
-- `developer`: developer cache focused cleanup
-- `advanced`: broader cleanup across supported scenarios
-- `custom`: user-defined rules
-
-Presets are merged into the active rule set instead of blindly replacing the entire configuration.
+The review UI is meant to support a deletion decision, not act as a full file browser.
 
 ## Supported Cleanup Scenarios
 
@@ -113,16 +94,15 @@ The codebase is a small app shell over a service-heavy core.
   - settings window creation
   - top-level app wiring via `AppDelegate` and `AppDependencies`
 - `Sources/Models`
-  - rules, presets, scenarios, file metadata, history, safety metadata
+  - rules, scenarios, file metadata, history, safety metadata
 - `Sources/Services`
   - scanning, risk analysis, history, persistence, estimation, previewing
 - `Sources/Services/Engine`
   - cleanup execution, deletion decisions, rule conflict handling
 - `Sources/Views`
-  - settings tabs
+  - cleanup and unified settings UI
   - cleanup confirmation and progress UI
-  - preset management UI
-  - history/statistics UI
+  - history UI
   - shared rows and sections
 
 At a high level:
@@ -151,7 +131,6 @@ SpaceGuard/
 │       ├── Cleanup/
 │       ├── Dialogs/
 │       ├── History/
-│       ├── Presets/
 │       ├── Settings/
 │       └── Shared/
 ├── Tests/
@@ -193,7 +172,7 @@ swift test
 Run the most relevant targeted tests for menu-bar-triggered cleanup state:
 
 ```bash
-swift test --filter 'SpaceGuardTests\.(CleanupPresetManagerTests|ProgressTrackerTests)'
+swift test --filter 'SpaceGuardTests\.ProgressTrackerTests'
 ```
 
 For manual regression of the status bar actions and cleanup confirmation flow, see:

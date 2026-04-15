@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 import UserNotifications
 
@@ -11,6 +12,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @MainActor private lazy var dependencies = AppDependencies()
     @MainActor private let settingsNavigationState = SettingsNavigationState()
     private let filePreviewer = FilePreviewer()
+    private var cancellables = Set<AnyCancellable>()
+    private var menuStatusResetTask: Task<Void, Never>?
+    private var diskInfoItem: NSMenuItem?
+    private var activityItem: NSMenuItem?
+    private var analyzeItem: NSMenuItem?
+    private var cleanupItem: NSMenuItem?
 
     @MainActor private var progressTracker: ProgressTracker {
         dependencies.progressTracker
@@ -33,6 +40,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self = self else { return false }
             return await self.showFilePreview(for: file)
         }
+
+        bindProgressTracker()
+        refreshStatusUI()
 
         // Request notification permission after a short delay (avoids bundle proxy issue)
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
@@ -72,6 +82,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let diskItem = NSMenuItem(title: "Scanning disk...", action: nil, keyEquivalent: "")
         diskItem.isEnabled = false
         menu.addItem(diskItem)
+        diskInfoItem = diskItem
+
+        let activityItem = NSMenuItem(title: "Ready", action: nil, keyEquivalent: "")
+        activityItem.isEnabled = false
+        activityItem.isHidden = true
+        menu.addItem(activityItem)
+        self.activityItem = activityItem
 
         menu.addItem(NSMenuItem.separator())
 
@@ -79,10 +96,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let analyzeItem = NSMenuItem(title: "Analyze Disk", action: #selector(analyzeDisk), keyEquivalent: "a")
         analyzeItem.target = self
         menu.addItem(analyzeItem)
+        self.analyzeItem = analyzeItem
 
         let cleanupItem = NSMenuItem(title: "Quick Cleanup", action: #selector(quickCleanup), keyEquivalent: "q")
         cleanupItem.target = self
         menu.addItem(cleanupItem)
+        self.cleanupItem = cleanupItem
 
         menu.addItem(NSMenuItem.separator())
 
@@ -102,7 +121,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func analyzeDisk() {
-        presentSettings(selecting: .cleanup)
+        activityItem?.isHidden = false
+        activityItem?.title = "Scanning: Starting disk analysis..."
+        updateStatusButton(symbolName: "magnifyingglass.circle.fill", title: " Scanning", toolTip: "Starting disk analysis...")
 
         Task {
             showNotification(title: "Disk Analysis", message: "Starting disk analysis...")
@@ -120,7 +141,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func quickCleanup() {
-        presentSettings(selecting: .cleanup)
+        activityItem?.isHidden = false
+        activityItem?.title = "Cleanup: Starting quick cleanup..."
+        updateStatusButton(symbolName: "trash.circle.fill", title: " Cleaning", toolTip: "Starting quick cleanup...")
 
         Task {
             showNotification(title: "Quick Cleanup", message: "Scanning for files to clean...")
@@ -159,7 +182,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         diskStats = dependencies.scanner.getDiskUsage()
 
         // Update menu item
-        if let diskItem = menu.item(at: 0) {
+        if let diskItem = diskInfoItem {
             if let stats = diskStats {
                 let usedPercent = String(format: "%.1f", stats.usedPercentage)
                 diskItem.title = "Disk: \(stats.formattedUsed) used (\(usedPercent)%)"
@@ -170,7 +193,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func openSettings() {
-        presentSettings(selecting: .general)
+        presentSettings(selecting: .settings)
     }
 
     @MainActor
@@ -260,6 +283,134 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 print("Error showing notification: \(error)")
             }
         }
+    }
+
+    private func bindProgressTracker() {
+        progressTracker.$currentStatus
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.refreshStatusUI()
+            }
+            .store(in: &cancellables)
+
+        progressTracker.$isScanning
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.refreshStatusUI()
+            }
+            .store(in: &cancellables)
+
+        progressTracker.$isCleaning
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.refreshStatusUI()
+            }
+            .store(in: &cancellables)
+    }
+
+    private func refreshStatusUI() {
+        let status = progressTracker.currentStatus
+        let isWorking = progressTracker.isScanning || progressTracker.isCleaning
+
+        analyzeItem?.isEnabled = !isWorking
+        cleanupItem?.isEnabled = !isWorking
+
+        if isWorking {
+            menuStatusResetTask?.cancel()
+
+            activityItem?.isHidden = false
+            activityItem?.title = progressSummary(for: status)
+
+            if let button = statusItem.button {
+                button.image = NSImage(systemSymbolName: progressTracker.isScanning ? "magnifyingglass.circle.fill" : "trash.circle.fill", accessibilityDescription: "SpaceGuard busy")
+                button.title = progressTracker.isScanning ? " Scanning" : " Cleaning"
+                button.toolTip = status
+            }
+            return
+        }
+
+        if isTerminalStatus(status) {
+            activityItem?.isHidden = false
+            activityItem?.title = status
+            scheduleStatusReset()
+
+            if let button = statusItem.button {
+                button.image = NSImage(systemSymbolName: symbolName(for: status), accessibilityDescription: "SpaceGuard status")
+                button.title = buttonTitle(for: status)
+                button.toolTip = status
+            }
+            return
+        }
+
+        activityItem?.isHidden = true
+        resetStatusButtonAppearance()
+    }
+
+    private func scheduleStatusReset() {
+        menuStatusResetTask?.cancel()
+        menuStatusResetTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 4_000_000_000)
+            guard let self = self else { return }
+            guard !self.progressTracker.isScanning, !self.progressTracker.isCleaning else { return }
+            self.activityItem?.isHidden = true
+            self.resetStatusButtonAppearance()
+        }
+    }
+
+    private func resetStatusButtonAppearance() {
+        updateStatusButton(symbolName: "internaldrive", title: "", toolTip: "SpaceGuard")
+    }
+
+    private func isTerminalStatus(_ status: String) -> Bool {
+        status.hasPrefix("Scan complete")
+            || status.hasPrefix("Cleanup complete")
+            || status.hasPrefix("Quick cleanup complete")
+            || status.hasPrefix("Scan failed")
+            || status.hasSuffix("cancelled")
+    }
+
+    private func progressSummary(for status: String) -> String {
+        if progressTracker.isScanning {
+            return "Scanning: \(status)"
+        }
+
+        if progressTracker.isCleaning {
+            return "Cleanup: \(status)"
+        }
+
+        return status
+    }
+
+    private func symbolName(for status: String) -> String {
+        if status.hasPrefix("Scan failed") {
+            return "xmark.octagon.fill"
+        }
+
+        if status.hasSuffix("cancelled") {
+            return "exclamationmark.triangle.fill"
+        }
+
+        return "checkmark.circle.fill"
+    }
+
+    private func buttonTitle(for status: String) -> String {
+        if status.hasPrefix("Scan failed") {
+            return " Failed"
+        }
+
+        if status.hasSuffix("cancelled") {
+            return " Cancelled"
+        }
+
+        return " Done"
+    }
+
+    private func updateStatusButton(symbolName: String, title: String, toolTip: String) {
+        guard let button = statusItem.button else { return }
+        button.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: "SpaceGuard")
+        button.image?.size = NSSize(width: 18, height: 18)
+        button.title = title
+        button.toolTip = toolTip
     }
 }
 

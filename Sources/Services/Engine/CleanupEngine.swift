@@ -378,15 +378,6 @@ class CleanupEngine {
     /// Estimate cleanup space based on rules and scenarios
     func estimateCleanupSpace(rules: CleanupRules) -> Int64 {
         let estimator = SpaceEstimator()
-
-        // Estimate space based on scenarios if preset is active
-        if let activePreset = rules.activePreset {
-            let presetManager = CleanupPresetManager()
-            let report = presetManager.getPresetSavingsReport(activePreset)
-            return report.totalSavings
-        }
-
-        // Estimate space based on rules
         return estimator.estimateSpaceForRules(rules)
     }
 

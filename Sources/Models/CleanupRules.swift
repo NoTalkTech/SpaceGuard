@@ -65,10 +65,6 @@ struct CleanupRules: Codable {
     var exclusionPatterns: [String] = []
     var scheduledCleanup: ScheduledCleanup? = nil
 
-    // Preset management
-    var activePreset: CleanupPreset? = nil
-    var appliedPresets: [CleanupPreset] = []
-
     enum CodingKeys: String, CodingKey {
         case autoCleanLowRisk
         case confirmMediumRisk
@@ -85,8 +81,6 @@ struct CleanupRules: Codable {
         case customRiskOverrides
         case exclusionPatterns
         case scheduledCleanup
-        case activePreset
-        case appliedPresets
     }
 
     func shouldIncludeFile(at path: String) -> Bool {
