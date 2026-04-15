@@ -10,10 +10,7 @@ struct CleanupConfirmationView: View {
     @State private var lowRiskSelected = true
     @State private var mediumRiskSelected = false
     @State private var highRiskSelected = false
-    @State private var customFileSelections: [UUID: Bool] = [:]
-    @State private var showingDetails = false
     @State private var expandedRiskLevel: RiskLevel?
-    @State private var displayMode: RiskLevelSection.DisplayMode = .directories
 
     private var riskGroups: [RiskLevel: [FileItem]] {
         Dictionary(grouping: files) { $0.riskLevel }
@@ -73,16 +70,11 @@ struct CleanupConfirmationView: View {
                             files: lowRiskFiles,
                             isSelected: lowRiskSelected,
                             isExpanded: expandedRiskLevel == .low,
-                            displayMode: displayMode,
                             onToggle: {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                    lowRiskSelected.toggle()
-                                }
+                                lowRiskSelected.toggle()
                             },
                             onExpand: {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                    expandedRiskLevel = expandedRiskLevel == .low ? nil : .low
-                                }
+                                expandedRiskLevel = expandedRiskLevel == .low ? nil : .low
                             }
                         )
                     }
@@ -93,16 +85,11 @@ struct CleanupConfirmationView: View {
                             files: mediumRiskFiles,
                             isSelected: mediumRiskSelected,
                             isExpanded: expandedRiskLevel == .medium,
-                            displayMode: displayMode,
                             onToggle: {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                    mediumRiskSelected.toggle()
-                                }
+                                mediumRiskSelected.toggle()
                             },
                             onExpand: {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                    expandedRiskLevel = expandedRiskLevel == .medium ? nil : .medium
-                                }
+                                expandedRiskLevel = expandedRiskLevel == .medium ? nil : .medium
                             }
                         )
                     }
@@ -113,16 +100,11 @@ struct CleanupConfirmationView: View {
                             files: highRiskFiles,
                             isSelected: highRiskSelected,
                             isExpanded: expandedRiskLevel == .high,
-                            displayMode: displayMode,
                             onToggle: {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                    highRiskSelected.toggle()
-                                }
+                                highRiskSelected.toggle()
                             },
                             onExpand: {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                    expandedRiskLevel = expandedRiskLevel == .high ? nil : .high
-                                }
+                                expandedRiskLevel = expandedRiskLevel == .high ? nil : .high
                             }
                         )
                     }
@@ -172,18 +154,15 @@ struct CleanupConfirmationView: View {
 
                 Spacer()
 
-                Picker("View", selection: $displayMode) {
-                    ForEach(RiskLevelSection.DisplayMode.allCases) { mode in
-                        Text(mode.rawValue).tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 220)
-
                 Text("\(files.count) files")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
             }
+
+            Text("Review the risk groups below. SpaceGuard shows representative directories and the largest files instead of the full file tree.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             // Stats grid
             LazyVGrid(columns: [

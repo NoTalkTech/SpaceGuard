@@ -42,9 +42,6 @@ final class CleanupRulesTests: XCTestCase {
         XCTAssertNotNil(rules.exclusionPatterns)
         XCTAssertNil(rules.scheduledCleanup)
 
-        // 验证预设管理字段
-        XCTAssertNil(rules.activePreset)
-        XCTAssertTrue(rules.appliedPresets.isEmpty)
     }
 
     func testDetectConflicts() {
@@ -152,36 +149,6 @@ final class CleanupRulesTests: XCTestCase {
         XCTAssertEqual(rules.deleteCacheOlderThanDays, 0) // 最小为0
     }
 
-    func testApplyPreset() {
-        var rules = CleanupRules()
-        let presetManager = CleanupPresetManager()
-
-        // 应用安全预设
-        rules = presetManager.applyPreset(.safe, to: rules)
-
-        // 验证预设已应用
-        XCTAssertTrue(rules.autoCleanLowRisk)
-        XCTAssertTrue(rules.confirmMediumRisk)
-        XCTAssertTrue(rules.neverDeleteHighRisk)
-        // 年龄阈值：取默认值和预设值的较小值（更积极的清理）
-        // 默认值：downloads=90, logs=30, cache=7
-        // 安全预设：downloads=180, logs=60, cache=30
-        // min(90, 180) = 90, min(30, 60) = 30, min(7, 30) = 7
-        XCTAssertEqual(rules.deleteDownloadsOlderThanDays, 90)
-        XCTAssertEqual(rules.deleteLogsOlderThanDays, 30)
-        XCTAssertEqual(rules.deleteCacheOlderThanDays, 7)
-        // 大小阈值：取默认值和预设值的较小值
-        // 默认值：minimumSize=1MB, skipLargerThan=1GB
-        // 安全预设：minimumSize=1MB, skipLargerThan=5GB
-        // min(1MB, 1MB) = 1MB, min(1GB, 5GB) = 1GB
-        XCTAssertEqual(rules.minimumFileSizeToConsider, 1024 * 1024) // 1MB
-        XCTAssertEqual(rules.skipFilesLargerThan, 1024 * 1024 * 1024) // 1GB
-
-        // 验证预设已记录
-        XCTAssertEqual(rules.activePreset, .safe)
-        XCTAssertTrue(rules.appliedPresets.contains(.safe))
-    }
-
     func testSaveAndLoad() {
         // 创建自定义规则
         var originalRules = CleanupRules()
@@ -208,9 +175,6 @@ final class CleanupRulesTests: XCTestCase {
         ]
 
         originalRules.exclusionPatterns = ["*.tmp", "*.log"]
-
-        // 应用预设以便测试预设字段
-        originalRules = CleanupPresetManager().applyPreset(.developer, to: originalRules)
 
         // 保存规则
         RulesPersistenceService().saveRules(originalRules)
@@ -249,9 +213,6 @@ final class CleanupRulesTests: XCTestCase {
         // 验证排除模式
         XCTAssertEqual(loadedRules.exclusionPatterns.sorted(), originalRules.exclusionPatterns.sorted())
 
-        // 验证预设字段
-        XCTAssertEqual(loadedRules.activePreset, originalRules.activePreset)
-        XCTAssertEqual(loadedRules.appliedPresets, originalRules.appliedPresets)
     }
 
 

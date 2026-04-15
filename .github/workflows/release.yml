@@ -1,5 +1,8 @@
 name: Create Release
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 on:
   push:
     branches:
@@ -21,7 +24,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0  # Fetch all history and tags for version detection
 
@@ -95,10 +98,15 @@ jobs:
           echo "Determined version: $VERSION"
           echo "Determined tag: $TAG_NAME"
 
-      - name: Set up Swift
-        uses: swift-actions/setup-swift@v2
-        with:
-          swift-version: '6.0'
+      - name: Verify preinstalled Swift toolchain
+        run: |
+          SWIFT_VERSION=$(swift --version | head -n 1)
+          echo "Detected Swift toolchain: $SWIFT_VERSION"
+
+          if ! echo "$SWIFT_VERSION" | grep -Eq 'Swift version 6\.'; then
+            echo "Error: Swift 6.x is required on the runner"
+            exit 1
+          fi
 
       - name: Debug Environment
         run: |
@@ -164,46 +172,62 @@ jobs:
           echo "DMG_NAME=$DMG_NAME" >> $GITHUB_ENV
           echo "Created DMG: $DMG_NAME (Version: $VERSION, Tag: $TAG_NAME)"
 
-      - name: Create Release
-        id: create_release
-        uses: softprops/action-gh-release@v1
+      - name: Create or Update Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ env.TAG_NAME }}
-          name: SpaceGuard ${{ env.VERSION }}
-          body: |
-            ## SpaceGuard ${{ env.VERSION }}
+        run: |
+          BODY_FILE=$(mktemp)
+          AUTO_INCREMENT_NOTE=""
 
-            ### Source
-            - Triggered by: ${{ github.event_name }}
-            - Version: ${{ env.VERSION }}
-            - Tag: ${{ env.TAG_NAME }}
-            - Commit: ${{ github.sha }}
-            ${{ env.AUTO_INCREMENTED == 'true' && '- Auto-incremented patch version from previous tag' || '' }}
+          if [ "${{ env.AUTO_INCREMENTED }}" = "true" ]; then
+            AUTO_INCREMENT_NOTE="- Auto-incremented patch version from previous tag"
+          fi
 
-            ### What's New
-            - Automated release build
-            - DMG installer included
-            - Universal binary (arm64 + x86_64)
+          cat > "$BODY_FILE" <<EOF
+          ## SpaceGuard ${{ env.VERSION }}
 
-            ### Installation
-            1. Download the DMG file
-            2. Double-click to mount
-            3. Drag SpaceGuard.app to Applications folder
-            4. Launch from Applications or Spotlight
+          ### Source
+          - Triggered by: ${{ github.event_name }}
+          - Version: ${{ env.VERSION }}
+          - Tag: ${{ env.TAG_NAME }}
+          - Commit: ${{ github.sha }}
+          $AUTO_INCREMENT_NOTE
 
-            ### Build Information
-            - Built on: ${{ github.event.head_commit.timestamp }}
-            - Workflow: ${{ github.workflow }}
-            - Swift version: 6.0
+          ### What's New
+          - Automated release build
+          - DMG installer included
+          - Universal binary (arm64 + x86_64)
 
-            ### Source Code
-            Full source available at: https://github.com/${{ github.repository }}
-          draft: false
-          prerelease: false
-          generate_release_notes: false
-          files: |
-            ${{ env.DMG_NAME }}
-            SpaceGuard.app/Contents/Info.plist
+          ### Installation
+          1. Download the DMG file
+          2. Double-click to mount
+          3. Drag SpaceGuard.app to Applications folder
+          4. Launch from Applications or Spotlight
 
+          ### Build Information
+          - Built on: ${{ github.event.head_commit.timestamp }}
+          - Workflow: ${{ github.workflow }}
+          - Swift version: $(swift --version | head -n 1)
+
+          ### Source Code
+          Full source available at: https://github.com/${{ github.repository }}
+          EOF
+
+          if gh release view "${{ env.TAG_NAME }}" >/dev/null 2>&1; then
+            echo "Release ${{ env.TAG_NAME }} already exists; updating metadata and assets"
+            gh release edit "${{ env.TAG_NAME }}" \
+              --title "SpaceGuard ${{ env.VERSION }}" \
+              --notes-file "$BODY_FILE"
+            gh release upload "${{ env.TAG_NAME }}" \
+              "${{ env.DMG_NAME }}" \
+              "SpaceGuard.app/Contents/Info.plist" \
+              --clobber
+          else
+            echo "Creating release ${{ env.TAG_NAME }}"
+            gh release create "${{ env.TAG_NAME }}" \
+              "${{ env.DMG_NAME }}" \
+              "SpaceGuard.app/Contents/Info.plist" \
+              --target "${{ github.sha }}" \
+              --title "SpaceGuard ${{ env.VERSION }}" \
+              --notes-file "$BODY_FILE"
+          fi

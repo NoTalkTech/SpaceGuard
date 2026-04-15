@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 import UserNotifications
 
@@ -7,10 +8,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem!
     var menu: NSMenu!
     var settingsWindow: NSWindow?
+    var quickCleanupWindow: NSWindow?
     private var diskStats: DiskStats?
     @MainActor private lazy var dependencies = AppDependencies()
     @MainActor private let settingsNavigationState = SettingsNavigationState()
     private let filePreviewer = FilePreviewer()
+    private var cancellables = Set<AnyCancellable>()
+    private var menuStatusResetTask: Task<Void, Never>?
+    private var diskInfoItem: NSMenuItem?
+    private var activityItem: NSMenuItem?
+    private var analyzeItem: NSMenuItem?
+    private var cleanupItem: NSMenuItem?
 
     @MainActor private var progressTracker: ProgressTracker {
         dependencies.progressTracker
@@ -33,6 +41,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self = self else { return false }
             return await self.showFilePreview(for: file)
         }
+
+        bindProgressTracker()
+        refreshStatusUI()
 
         // Request notification permission after a short delay (avoids bundle proxy issue)
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
@@ -72,6 +83,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let diskItem = NSMenuItem(title: "Scanning disk...", action: nil, keyEquivalent: "")
         diskItem.isEnabled = false
         menu.addItem(diskItem)
+        diskInfoItem = diskItem
+
+        let activityItem = NSMenuItem(title: "Ready", action: nil, keyEquivalent: "")
+        activityItem.isEnabled = false
+        activityItem.isHidden = true
+        menu.addItem(activityItem)
+        self.activityItem = activityItem
 
         menu.addItem(NSMenuItem.separator())
 
@@ -79,10 +97,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let analyzeItem = NSMenuItem(title: "Analyze Disk", action: #selector(analyzeDisk), keyEquivalent: "a")
         analyzeItem.target = self
         menu.addItem(analyzeItem)
+        self.analyzeItem = analyzeItem
 
         let cleanupItem = NSMenuItem(title: "Quick Cleanup", action: #selector(quickCleanup), keyEquivalent: "q")
         cleanupItem.target = self
         menu.addItem(cleanupItem)
+        self.cleanupItem = cleanupItem
 
         menu.addItem(NSMenuItem.separator())
 
@@ -102,7 +122,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func analyzeDisk() {
-        presentSettings(selecting: .cleanup)
+        activityItem?.isHidden = false
+        activityItem?.title = "Scanning: Starting disk analysis..."
+        updateStatusButton(symbolName: "magnifyingglass.circle.fill", title: " Scanning", toolTip: "Starting disk analysis...")
 
         Task {
             showNotification(title: "Disk Analysis", message: "Starting disk analysis...")
@@ -120,38 +142,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func quickCleanup() {
-        presentSettings(selecting: .cleanup)
+        guard !progressTracker.isScanning, !progressTracker.isCleaning else {
+            showNotification(title: "Quick Cleanup", message: "Another operation is already in progress")
+            return
+        }
 
-        Task {
-            showNotification(title: "Quick Cleanup", message: "Scanning for files to clean...")
-
-            let rules = RulesPersistenceService().loadRules()
-            guard let result = await progressTracker.quickCleanup(rules: rules) else {
-                showNotification(title: "Quick Cleanup", message: "Cleanup is already in progress")
-                return
-            }
-
-            if !result.errors.isEmpty {
-                let quickPaths = dependencies.cleanupEngine.getQuickCleanupPaths()
-                let scanErrorCount = result.errors.filter { quickPaths.contains($0.filePath) }.count
-                if scanErrorCount > 0 {
-                    showNotification(
-                        title: "Quick Cleanup Warning",
-                        message: "Encountered \(scanErrorCount) error(s) while scanning, some files may not be included"
-                    )
-                }
-            }
-
-            if result.filesDeleted == 0 {
-                showNotification(title: "Quick Cleanup", message: "No low-risk files found to clean")
-                return
-            }
-
-            let formattedFreed = ByteCountFormatter.string(fromByteCount: result.spaceFreed, countStyle: .file)
-            showNotification(
-                title: "Quick Cleanup Complete",
-                message: "Freed \(formattedFreed) by deleting \(result.filesDeleted) files"
-            )
+        Task { @MainActor in
+            await startQuickCleanupReview()
         }
     }
 
@@ -159,7 +156,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         diskStats = dependencies.scanner.getDiskUsage()
 
         // Update menu item
-        if let diskItem = menu.item(at: 0) {
+        if let diskItem = diskInfoItem {
             if let stats = diskStats {
                 let usedPercent = String(format: "%.1f", stats.usedPercentage)
                 diskItem.title = "Disk: \(stats.formattedUsed) used (\(usedPercent)%)"
@@ -170,7 +167,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func openSettings() {
-        presentSettings(selecting: .general)
+        presentSettings(selecting: .settings)
     }
 
     @MainActor
@@ -261,12 +258,297 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
     }
+
+    private func bindProgressTracker() {
+        progressTracker.$currentStatus
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.refreshStatusUI()
+            }
+            .store(in: &cancellables)
+
+        progressTracker.$isScanning
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.refreshStatusUI()
+            }
+            .store(in: &cancellables)
+
+        progressTracker.$isCleaning
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.refreshStatusUI()
+            }
+            .store(in: &cancellables)
+    }
+
+    private func refreshStatusUI() {
+        let status = progressTracker.currentStatus
+        let isWorking = progressTracker.isScanning || progressTracker.isCleaning
+
+        analyzeItem?.isEnabled = !isWorking
+        cleanupItem?.isEnabled = !isWorking
+
+        if isWorking {
+            menuStatusResetTask?.cancel()
+
+            activityItem?.isHidden = false
+            activityItem?.title = progressSummary(for: status)
+
+            if let button = statusItem.button {
+                button.image = NSImage(systemSymbolName: progressTracker.isScanning ? "magnifyingglass.circle.fill" : "trash.circle.fill", accessibilityDescription: "SpaceGuard busy")
+                button.title = progressTracker.isScanning ? " Scanning" : " Cleaning"
+                button.toolTip = status
+            }
+            return
+        }
+
+        if isTerminalStatus(status) {
+            activityItem?.isHidden = false
+            activityItem?.title = status
+            scheduleStatusReset()
+
+            if let button = statusItem.button {
+                button.image = NSImage(systemSymbolName: symbolName(for: status), accessibilityDescription: "SpaceGuard status")
+                button.title = buttonTitle(for: status)
+                button.toolTip = status
+            }
+            return
+        }
+
+        activityItem?.isHidden = true
+        resetStatusButtonAppearance()
+    }
+
+    private func scheduleStatusReset() {
+        menuStatusResetTask?.cancel()
+        menuStatusResetTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 4_000_000_000)
+            guard let self = self else { return }
+            guard !self.progressTracker.isScanning, !self.progressTracker.isCleaning else { return }
+            self.activityItem?.isHidden = true
+            self.resetStatusButtonAppearance()
+        }
+    }
+
+    private func resetStatusButtonAppearance() {
+        updateStatusButton(symbolName: "internaldrive", title: "", toolTip: "SpaceGuard")
+    }
+
+    private func isTerminalStatus(_ status: String) -> Bool {
+        status.hasPrefix("Scan complete")
+            || status.hasPrefix("Cleanup complete")
+            || status.hasPrefix("Quick cleanup complete")
+            || status.hasPrefix("Scan failed")
+            || status.hasSuffix("cancelled")
+    }
+
+    private func progressSummary(for status: String) -> String {
+        if progressTracker.isScanning {
+            return "Scanning: \(status)"
+        }
+
+        if progressTracker.isCleaning {
+            return "Cleanup: \(status)"
+        }
+
+        return status
+    }
+
+    private func symbolName(for status: String) -> String {
+        if status.hasPrefix("Scan failed") {
+            return "xmark.octagon.fill"
+        }
+
+        if status.hasSuffix("cancelled") {
+            return "exclamationmark.triangle.fill"
+        }
+
+        return "checkmark.circle.fill"
+    }
+
+    private func buttonTitle(for status: String) -> String {
+        if status.hasPrefix("Scan failed") {
+            return " Failed"
+        }
+
+        if status.hasSuffix("cancelled") {
+            return " Cancelled"
+        }
+
+        return " Done"
+    }
+
+    private func updateStatusButton(symbolName: String, title: String, toolTip: String) {
+        guard let button = statusItem.button else { return }
+        button.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: "SpaceGuard")
+        button.image?.size = NSSize(width: 18, height: 18)
+        button.title = title
+        button.toolTip = toolTip
+    }
+
+    @MainActor
+    private func startQuickCleanupReview() async {
+        progressTracker.isCleaning = true
+        progressTracker.currentOperation = "Quick cleanup..."
+        progressTracker.currentStatus = "Scanning quick cleanup locations"
+        progressTracker.currentProgress = 0
+        progressTracker.filesProcessed = 0
+        progressTracker.totalFiles = 0
+        progressTracker.spaceFreed = 0
+
+        activityItem?.isHidden = false
+        activityItem?.title = "Cleanup: Scanning quick cleanup locations"
+        updateStatusButton(symbolName: "trash.circle.fill", title: " Cleaning", toolTip: "Scanning quick cleanup locations")
+        showNotification(title: "Quick Cleanup", message: "Scanning for files to clean...")
+
+        let rules = RulesPersistenceService().loadRules()
+        let scanner = DiskScanner()
+        let analyzer = RiskAnalyzer()
+        let cachePaths = dependencies.cleanupEngine.getQuickCleanupPaths()
+
+        var allFiles: [FileItem] = []
+        var scanErrors: [Error] = []
+
+        for (index, path) in cachePaths.enumerated() {
+            guard FileManager.default.fileExists(atPath: path) else { continue }
+
+            progressTracker.filesProcessed = index
+            progressTracker.totalFiles = cachePaths.count
+            progressTracker.currentProgress = Double(index) / Double(max(cachePaths.count, 1))
+            progressTracker.currentStatus = "Scanning quick cleanup locations (\(index + 1)/\(cachePaths.count))"
+
+            do {
+                let scanResult = try await scanner.scanDirectory(at: path) { _, _ in }
+                let analyzedFiles = analyzer.analyzeFiles(scanResult.files, rules: rules)
+                allFiles.append(contentsOf: analyzedFiles)
+            } catch {
+                scanErrors.append(error)
+            }
+        }
+
+        let lowRiskFiles = allFiles.filter { $0.riskLevel == .low }
+
+        if !scanErrors.isEmpty {
+            let scanErrorCount = scanErrors.count
+            showNotification(
+                title: "Quick Cleanup Warning",
+                message: "Encountered \(scanErrorCount) error(s) while scanning, some files may not be included"
+            )
+        }
+
+        guard !lowRiskFiles.isEmpty else {
+            progressTracker.isCleaning = false
+            progressTracker.currentStatus = "Quick cleanup complete: 0 files deleted, 0 KB freed"
+            showNotification(title: "Quick Cleanup", message: "No low-risk files found to clean")
+            return
+        }
+
+        progressTracker.currentStatus = "Quick cleanup review ready: \(lowRiskFiles.count) files"
+        showQuickCleanupConfirmation(files: lowRiskFiles, rules: rules)
+    }
+
+    @MainActor
+    private func showQuickCleanupConfirmation(files: [FileItem], rules: CleanupRules) {
+        let confirmationView = CleanupConfirmationView(
+            files: files,
+            rules: rules,
+            onConfirm: { [weak self] selections in
+                guard let self = self else { return }
+                self.quickCleanupWindow?.close()
+                self.quickCleanupWindow = nil
+                Task { @MainActor in
+                    await self.performQuickCleanupSelections(selections)
+                }
+            },
+            onCancel: { [weak self] in
+                self?.quickCleanupWindow?.close()
+                self?.quickCleanupWindow = nil
+                self?.progressTracker.isCleaning = false
+                self?.progressTracker.currentStatus = "Quick cleanup cancelled"
+            }
+        )
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 720, height: 560),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        window.center()
+        window.title = "Confirm Quick Cleanup"
+        window.isReleasedWhenClosed = false
+        window.contentView = NSHostingView(rootView: confirmationView)
+
+        quickCleanupWindow = window
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @MainActor
+    private func performQuickCleanupSelections(_ selections: [FileSelection]) async {
+        progressTracker.isCleaning = true
+        progressTracker.currentStatus = "Starting cleanup"
+        progressTracker.currentProgress = 0
+        progressTracker.filesProcessed = 0
+        progressTracker.totalFiles = selections.count
+        progressTracker.spaceFreed = 0
+
+        let result = await dependencies.cleanupEngine.performBatchCleanup(selections: selections) { [weak self] current, total, freed in
+            Task { @MainActor in
+                guard let self = self else { return }
+                self.progressTracker.filesProcessed = current
+                self.progressTracker.totalFiles = total
+                self.progressTracker.spaceFreed = freed
+                self.progressTracker.currentProgress = Double(current) / Double(max(total, 1))
+                self.progressTracker.currentStatus = "Cleaned \(current)/\(total) files, freed \(ByteCountFormatter.string(fromByteCount: freed, countStyle: .file))"
+            }
+        }
+
+        progressTracker.isCleaning = false
+        progressTracker.currentStatus = "Quick cleanup complete: \(result.filesDeleted) files deleted, freed \(ByteCountFormatter.string(fromByteCount: result.spaceFreed, countStyle: .file))"
+        progressTracker.currentProgress = 1
+        progressTracker.filesProcessed = result.filesDeleted
+        progressTracker.totalFiles = selections.count
+        progressTracker.spaceFreed = result.spaceFreed
+
+        let record = CleanupHistoryRecord(
+            id: UUID(),
+            timestamp: Date(),
+            cleanupType: .quick,
+            filesDeleted: result.filesDeleted,
+            spaceFreed: result.spaceFreed,
+            duration: result.duration,
+            errors: result.errors.count,
+            wasCancelled: false
+        )
+        dependencies.historyManager.addRecord(record)
+
+        if result.filesDeleted == 0 {
+            showNotification(title: "Quick Cleanup", message: "No low-risk files were deleted")
+            return
+        }
+
+        let formattedFreed = ByteCountFormatter.string(fromByteCount: result.spaceFreed, countStyle: .file)
+        showNotification(
+            title: "Quick Cleanup Complete",
+            message: "Freed \(formattedFreed) by deleting \(result.filesDeleted) files"
+        )
+    }
 }
 
 extension AppDelegate: NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         if let window = notification.object as? NSWindow, window == settingsWindow {
             settingsWindow = nil
+        }
+        if let window = notification.object as? NSWindow, window == quickCleanupWindow {
+            if progressTracker.isCleaning,
+               progressTracker.currentStatus.hasPrefix("Quick cleanup review ready") || progressTracker.currentStatus == "Starting cleanup" {
+                progressTracker.isCleaning = false
+                progressTracker.currentStatus = "Quick cleanup cancelled"
+            }
+            quickCleanupWindow = nil
         }
     }
 }

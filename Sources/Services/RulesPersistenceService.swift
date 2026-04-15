@@ -71,17 +71,6 @@ class RulesPersistenceService: RulesPersisting {
             rules.scheduledCleanup = decoded
         }
 
-        // Load preset information
-        if let activePresetData = defaults.data(forKey: "activePreset"),
-           let decoded = try? JSONDecoder().decode(CleanupPreset.self, from: activePresetData) {
-            rules.activePreset = decoded
-        }
-
-        if let appliedPresetsData = defaults.data(forKey: "appliedPresets"),
-           let decoded = try? JSONDecoder().decode([CleanupPreset].self, from: appliedPresetsData) {
-            rules.appliedPresets = decoded
-        }
-
         return rules
     }
 
@@ -115,14 +104,7 @@ class RulesPersistenceService: RulesPersisting {
             defaults.set(scheduledData, forKey: "scheduledCleanup")
         }
 
-        // Save preset information
-        if let activePreset = rules.activePreset,
-           let presetData = try? JSONEncoder().encode(activePreset) {
-            defaults.set(presetData, forKey: "activePreset")
-        }
-
-        if let appliedPresetsData = try? JSONEncoder().encode(rules.appliedPresets) {
-            defaults.set(appliedPresetsData, forKey: "appliedPresets")
-        }
+        defaults.removeObject(forKey: "activePreset")
+        defaults.removeObject(forKey: "appliedPresets")
     }
 }
