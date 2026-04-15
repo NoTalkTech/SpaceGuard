@@ -10,18 +10,37 @@ APP_NAME="SpaceGuard"
 APP_BUNDLE="$PROJECT_DIR/$APP_NAME.app"
 RESOURCES_DIR="$PROJECT_DIR/Sources/Resources"
 
-# Determine build directory (universal binary may be in different location)
-if [ -f "$PROJECT_DIR/.build/apple/Products/Release/$APP_NAME" ]; then
-    BUILD_DIR="$PROJECT_DIR/.build/apple/Products/Release"
-elif [ -f "$PROJECT_DIR/.build/release/$APP_NAME" ]; then
-    BUILD_DIR="$PROJECT_DIR/.build/release"
+# Allow CI to point packaging at a dedicated scratch build root.
+if [ -n "${SPACEGUARD_BUILD_DIR:-}" ]; then
+    BUILD_DIR="$SPACEGUARD_BUILD_DIR"
+elif [ -n "${SPACEGUARD_BUILD_ROOT:-}" ]; then
+    if [ -f "$PROJECT_DIR/$SPACEGUARD_BUILD_ROOT/apple/Products/Release/$APP_NAME" ]; then
+        BUILD_DIR="$PROJECT_DIR/$SPACEGUARD_BUILD_ROOT/apple/Products/Release"
+    elif [ -f "$PROJECT_DIR/$SPACEGUARD_BUILD_ROOT/release/$APP_NAME" ]; then
+        BUILD_DIR="$PROJECT_DIR/$SPACEGUARD_BUILD_ROOT/release"
+    elif [ -f "$PROJECT_DIR/$SPACEGUARD_BUILD_ROOT/arm64-apple-macosx/release/$APP_NAME" ]; then
+        BUILD_DIR="$PROJECT_DIR/$SPACEGUARD_BUILD_ROOT/arm64-apple-macosx/release"
+    else
+        echo "Error: $APP_NAME executable not found in SPACEGUARD_BUILD_ROOT=$SPACEGUARD_BUILD_ROOT"
+        exit 1
+    fi
 else
-    echo "Error: $APP_NAME executable not found"
-    echo "Please build the project first: swift build --configuration release"
-    exit 1
+    # Determine build directory (universal binary may be in different location)
+    if [ -f "$PROJECT_DIR/.build/apple/Products/Release/$APP_NAME" ]; then
+        BUILD_DIR="$PROJECT_DIR/.build/apple/Products/Release"
+    elif [ -f "$PROJECT_DIR/.build/release/$APP_NAME" ]; then
+        BUILD_DIR="$PROJECT_DIR/.build/release"
+    elif [ -f "$PROJECT_DIR/.build/arm64-apple-macosx/release/$APP_NAME" ]; then
+        BUILD_DIR="$PROJECT_DIR/.build/arm64-apple-macosx/release"
+    else
+        echo "Error: $APP_NAME executable not found"
+        echo "Please build the project first: swift build --configuration release"
+        exit 1
+    fi
 fi
 
 echo "Creating $APP_NAME.app bundle..."
+echo "Using build directory: $BUILD_DIR"
 
 # Clean up existing bundle
 rm -rf "$APP_BUNDLE"

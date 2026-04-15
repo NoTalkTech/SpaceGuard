@@ -147,25 +147,33 @@ jobs:
 
       - name: Build Release (Universal Binary)
         run: |
+          BUILD_ROOT=".build-release"
+          rm -rf "$BUILD_ROOT"
+
           # Build with Swift 6.0+ which supports --arch flags
-          swift build --configuration release --arch arm64 --arch x86_64
+          swift build --configuration release --scratch-path "$BUILD_ROOT" --arch arm64 --arch x86_64
           echo "Build completed successfully"
 
           # Verify universal binary (check both possible locations)
           echo "Verifying executable architecture..."
-          if [ -f ".build/apple/Products/Release/SpaceGuard" ]; then
-            echo "Found in .build/apple/Products/Release/"
-            file .build/apple/Products/Release/SpaceGuard
-            lipo -info .build/apple/Products/Release/SpaceGuard
-          elif [ -f ".build/release/SpaceGuard" ]; then
-            echo "Found in .build/release/"
-            file .build/release/SpaceGuard
-            lipo -info .build/release/SpaceGuard
+          if [ -f "$BUILD_ROOT/apple/Products/Release/SpaceGuard" ]; then
+            echo "Found in $BUILD_ROOT/apple/Products/Release/"
+            file "$BUILD_ROOT/apple/Products/Release/SpaceGuard"
+            lipo -info "$BUILD_ROOT/apple/Products/Release/SpaceGuard"
+          elif [ -f "$BUILD_ROOT/release/SpaceGuard" ]; then
+            echo "Found in $BUILD_ROOT/release/"
+            file "$BUILD_ROOT/release/SpaceGuard"
+            lipo -info "$BUILD_ROOT/release/SpaceGuard"
+          elif [ -f "$BUILD_ROOT/arm64-apple-macosx/release/SpaceGuard" ]; then
+            echo "Found in $BUILD_ROOT/arm64-apple-macosx/release/"
+            file "$BUILD_ROOT/arm64-apple-macosx/release/SpaceGuard"
           else
             echo "Error: SpaceGuard executable not found"
-            find .build -name "SpaceGuard" -type f 2>/dev/null | head -10
+            find "$BUILD_ROOT" -name "SpaceGuard" -type f 2>/dev/null | head -10
             exit 1
           fi
+
+          echo "SPACEGUARD_BUILD_ROOT=$BUILD_ROOT" >> $GITHUB_ENV
 
       - name: Make scripts executable
         run: |
