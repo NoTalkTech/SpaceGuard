@@ -40,11 +40,9 @@ if [ ! -f "$PROJECT_DIR/.build/release/$APP_NAME" ]; then
     swift build --configuration release --arch arm64 --arch x86_64
 fi
 
-# Create .app bundle if needed
-if [ ! -d "$PROJECT_DIR/$APP_NAME.app" ]; then
-    echo "Creating application bundle..."
-    ./scripts/create-app-bundle.sh
-fi
+# Always recreate the app bundle so the packaged Info.plist matches the requested version.
+echo "Creating application bundle..."
+SPACEGUARD_VERSION="$VERSION" ./scripts/create-app-bundle.sh
 
 # Sign the application bundle (ad-hoc signing)
 echo "Signing application bundle..."
