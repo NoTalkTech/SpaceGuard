@@ -110,6 +110,9 @@ class SpaceEstimator {
             case .trash:
                 priority = 1 // 最高优先级
                 reason = "废纸篓通常包含用户已删除的文件，清理风险极低"
+            case .downloadInstallers:
+                priority = 3
+                reason = "下载目录中的旧安装包通常可重新下载，适合确认后释放空间"
             case .wallpaperCache:
                 priority = 2
                 reason = "壁纸缓存是自动下载的媒体文件，可安全清理"

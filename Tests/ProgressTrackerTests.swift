@@ -193,6 +193,14 @@ private final class MockCleanupEngine: CleanupEngineProtocol {
         .init(filesDeleted: 0, spaceFreed: 0, duration: 0, errors: [])
     }
 
+    func executeScenarioCleanup(
+        _ scenario: CleanupScenario,
+        rules: CleanupRules,
+        progress: @escaping (Int, Int, Int64) -> Void
+    ) async -> CleanupEngine.CleanupResult {
+        .init(filesDeleted: 0, spaceFreed: 0, duration: 0, errors: [])
+    }
+
     func cancelCleanup() {}
 
     func getQuickCleanupPaths() -> [String] {

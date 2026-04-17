@@ -3,6 +3,7 @@ import Foundation
 /// 清理场景枚举，对应 macOS 磁盘清理操作手册中的具体清理场景
 enum CleanupScenario: String, CaseIterable, Identifiable, Codable {
     case trash = "trash"
+    case downloadInstallers = "downloadInstallers"
     case wallpaperCache = "wallpaperCache"
     case jetbrainsCache = "jetbrainsCache"
     case jetbrainsLogs = "jetbrainsLogs"
@@ -17,6 +18,7 @@ enum CleanupScenario: String, CaseIterable, Identifiable, Codable {
     var displayName: String {
         switch self {
         case .trash: return "废纸篓"
+        case .downloadInstallers: return "下载目录旧安装包"
         case .wallpaperCache: return "壁纸缓存"
         case .jetbrainsCache: return "JetBrains 缓存"
         case .jetbrainsLogs: return "JetBrains 日志"
@@ -31,6 +33,7 @@ enum CleanupScenario: String, CaseIterable, Identifiable, Codable {
     var description: String {
         switch self {
         case .trash: return "清空用户废纸篓中的已删除文件"
+        case .downloadInstallers: return "清理下载目录中较旧的安装包和压缩安装文件"
         case .wallpaperCache: return "删除 macOS 航拍/动态壁纸视频缓存"
         case .jetbrainsCache: return "清理 JetBrains IDE 的缓存文件"
         case .jetbrainsLogs: return "清理 JetBrains IDE 的日志文件"
@@ -45,6 +48,7 @@ enum CleanupScenario: String, CaseIterable, Identifiable, Codable {
     var defaultRiskLevel: RiskLevel {
         switch self {
         case .trash: return .low
+        case .downloadInstallers: return .medium
         case .wallpaperCache: return .low
         case .jetbrainsCache: return .low
         case .jetbrainsLogs: return .low
@@ -60,6 +64,8 @@ enum CleanupScenario: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .trash:
             return [NSHomeDirectory() + "/.Trash"]
+        case .downloadInstallers:
+            return [NSHomeDirectory() + "/Downloads"]
         case .wallpaperCache:
             return [NSHomeDirectory() + "/Library/Application Support/com.apple.wallpaper/aerials"]
         case .jetbrainsCache:

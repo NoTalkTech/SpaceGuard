@@ -29,6 +29,11 @@ struct CleanupHistoryRecord: Identifiable, Codable {
     let duration: TimeInterval
     let errors: Int
     let wasCancelled: Bool
+    var freeSpaceBefore: Int64? = nil
+    var freeSpaceAfter: Int64? = nil
+    var goalTargetBytes: Int64? = nil
+    var planItemsExecuted: [String]? = nil
+    var reachedGoalAfterExecution: Bool? = nil
 
     var formattedSpaceFreed: String {
         ByteCountFormatter.string(fromByteCount: spaceFreed, countStyle: .file)
