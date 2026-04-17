@@ -10,6 +10,9 @@ struct SettingsView: View {
     @State private var showAddPattern = false
     @State private var showConfigureSchedule = false
     @State private var showFileTypeRulesEditor = false
+    @State private var showIncludedLocationsEditor = false
+    @State private var showExcludedLocationsEditor = false
+    @State private var showAppCachesEditor = false
 
     // Save feedback
     @State private var showSaveSuccess = false
@@ -31,6 +34,9 @@ struct SettingsView: View {
             showAddPattern: $showAddPattern,
             showConfigureSchedule: $showConfigureSchedule,
             showFileTypeRulesEditor: $showFileTypeRulesEditor,
+            showIncludedLocationsEditor: $showIncludedLocationsEditor,
+            showExcludedLocationsEditor: $showExcludedLocationsEditor,
+            showAppCachesEditor: $showAppCachesEditor,
             showSaveSuccess: $showSaveSuccess,
             saveMessage: $saveMessage,
             saveSettings: saveSettings
@@ -67,6 +73,45 @@ struct SettingsView: View {
             FileTypeRulesEditorView(
                 isPresented: $showFileTypeRulesEditor,
                 fileTypeRules: $rules.fileTypeRules
+            )
+            .onDisappear {
+                saveSettings()
+            }
+        }
+        .sheet(isPresented: $showIncludedLocationsEditor) {
+            StringListEditorView(
+                isPresented: $showIncludedLocationsEditor,
+                items: $rules.includeLocations,
+                title: "Included Locations",
+                subtitle: "These paths are eligible for rule-driven cleanup.",
+                placeholder: "Add location path...",
+                emptyStateText: "No included locations configured."
+            )
+            .onDisappear {
+                saveSettings()
+            }
+        }
+        .sheet(isPresented: $showExcludedLocationsEditor) {
+            StringListEditorView(
+                isPresented: $showExcludedLocationsEditor,
+                items: $rules.excludeLocations,
+                title: "Excluded Locations",
+                subtitle: "Files under these paths are always skipped.",
+                placeholder: "Add excluded path...",
+                emptyStateText: "No excluded locations configured."
+            )
+            .onDisappear {
+                saveSettings()
+            }
+        }
+        .sheet(isPresented: $showAppCachesEditor) {
+            StringListEditorView(
+                isPresented: $showAppCachesEditor,
+                items: $rules.appCachesToClean,
+                title: "App Caches To Clean",
+                subtitle: "Bundle identifiers used for app-specific cache cleanup.",
+                placeholder: "Add app bundle ID...",
+                emptyStateText: "No app cache identifiers configured."
             )
             .onDisappear {
                 saveSettings()

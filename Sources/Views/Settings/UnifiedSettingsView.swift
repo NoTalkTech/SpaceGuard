@@ -8,6 +8,9 @@ struct UnifiedSettingsView: View {
     @Binding var showAddPattern: Bool
     @Binding var showConfigureSchedule: Bool
     @Binding var showFileTypeRulesEditor: Bool
+    @Binding var showIncludedLocationsEditor: Bool
+    @Binding var showExcludedLocationsEditor: Bool
+    @Binding var showAppCachesEditor: Bool
     @Binding var showSaveSuccess: Bool
     @Binding var saveMessage: String
 
@@ -82,22 +85,28 @@ struct UnifiedSettingsView: View {
                 .font(.system(size: 15, weight: .semibold))
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            EditableListSection(
+            ScopeSummaryCard(
                 title: "Included Locations",
-                items: $rules.includeLocations,
-                placeholder: "Add location path..."
+                items: rules.includeLocations,
+                caption: "Paths that SpaceGuard will scan for rule-driven cleanup.",
+                actionTitle: "Edit...",
+                action: { showIncludedLocationsEditor = true }
             )
 
-            EditableListSection(
+            ScopeSummaryCard(
                 title: "Excluded Locations",
-                items: $rules.excludeLocations,
-                placeholder: "Add excluded path..."
+                items: rules.excludeLocations,
+                caption: "Paths that are always skipped, even if they match cleanup rules.",
+                actionTitle: "Edit...",
+                action: { showExcludedLocationsEditor = true }
             )
 
-            EditableListSection(
-                title: "App Caches to Clean",
-                items: $rules.appCachesToClean,
-                placeholder: "Add app bundle ID..."
+            ScopeSummaryCard(
+                title: "App Caches To Clean",
+                items: rules.appCachesToClean,
+                caption: "Bundle identifiers used for app-specific cache cleanup scenarios.",
+                actionTitle: "Edit...",
+                action: { showAppCachesEditor = true }
             )
 
             VStack(alignment: .leading, spacing: 12) {
@@ -340,5 +349,59 @@ struct UnifiedSettingsView: View {
                 storageGoal.minimumFreePercent = Double(newValue) / 100.0
             }
         )
+    }
+}
+
+private struct ScopeSummaryCard: View {
+    let title: String
+    let items: [String]
+    let caption: String
+    let actionTitle: String
+    let action: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.system(size: 15, weight: .semibold))
+
+                    Text("\(items.count) item\(items.count == 1 ? "" : "s")")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+
+                Button(actionTitle, action: action)
+                    .buttonStyle(.bordered)
+            }
+
+            Text(itemsPreview)
+                .font(.caption)
+                .foregroundColor(.primary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text(caption)
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.secondary.opacity(0.08))
+        .cornerRadius(10)
+    }
+
+    private var itemsPreview: String {
+        guard !items.isEmpty else {
+            return "No items configured."
+        }
+
+        let preview = items.prefix(3).joined(separator: ", ")
+        if items.count > 3 {
+            return "\(preview), and \(items.count - 3) more"
+        }
+        return preview
     }
 }
