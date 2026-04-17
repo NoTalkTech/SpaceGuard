@@ -3,6 +3,7 @@ import SwiftUI
 @MainActor
 struct SettingsView: View {
     @State private var rules = RulesPersistenceService().loadRules()
+    @State private var storageGoal = StorageGoalPersistenceService().loadGoal()
 
     // Dialog states
     @State private var showAddOverride = false
@@ -24,6 +25,7 @@ struct SettingsView: View {
     var body: some View {
         UnifiedSettingsView(
             rules: $rules,
+            storageGoal: $storageGoal,
             showResetConfirmation: $showResetConfirmation,
             showAddOverride: $showAddOverride,
             showAddPattern: $showAddPattern,
@@ -31,7 +33,7 @@ struct SettingsView: View {
             showFileTypeRulesEditor: $showFileTypeRulesEditor,
             showSaveSuccess: $showSaveSuccess,
             saveMessage: $saveMessage,
-            saveRules: saveRules
+            saveSettings: saveSettings
         )
         .frame(width: 700, height: 500)
         .sheet(isPresented: $showAddOverride) {
@@ -40,7 +42,7 @@ struct SettingsView: View {
                 customRiskOverrides: $rules.customRiskOverrides
             )
             .onDisappear {
-                saveRules()
+                saveSettings()
             }
         }
         .sheet(isPresented: $showAddPattern) {
@@ -49,7 +51,7 @@ struct SettingsView: View {
                 exclusionPatterns: $rules.exclusionPatterns
             )
             .onDisappear {
-                saveRules()
+                saveSettings()
             }
         }
         .sheet(isPresented: $showConfigureSchedule) {
@@ -58,7 +60,7 @@ struct SettingsView: View {
                 scheduledCleanup: $rules.scheduledCleanup
             )
             .onDisappear {
-                saveRules()
+                saveSettings()
             }
         }
         .sheet(isPresented: $showFileTypeRulesEditor) {
@@ -67,7 +69,7 @@ struct SettingsView: View {
                 fileTypeRules: $rules.fileTypeRules
             )
             .onDisappear {
-                saveRules()
+                saveSettings()
             }
         }
         .overlay(alignment: .bottom) {
@@ -100,7 +102,7 @@ struct SettingsView: View {
         }
     }
 
-    private func saveRules() {
+    private func saveSettings() {
         let ruleManager = RuleManager()
         let (_, conflicts) = ruleManager.validateRules(rules)
         ruleConflicts = conflicts
@@ -113,6 +115,7 @@ struct SettingsView: View {
         }
 
         RulesPersistenceService().saveRules(rules)
+        StorageGoalPersistenceService().saveGoal(storageGoal)
         showSaveSuccess = true
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {

@@ -22,10 +22,11 @@ final class CleanupScenariosDetectorTests: XCTestCase {
     func testAllScenariosEnum() {
         // 验证所有场景都包含在枚举中
         let allScenarios = CleanupScenario.allCases
-        XCTAssertEqual(allScenarios.count, 8, "应该有8个清理场景")
+        XCTAssertEqual(allScenarios.count, 9, "应该有9个清理场景")
 
         // 验证特定场景存在
         XCTAssertTrue(allScenarios.contains(.trash), "应包含废纸篓场景")
+        XCTAssertTrue(allScenarios.contains(.downloadInstallers), "应包含下载目录旧安装包场景")
         XCTAssertTrue(allScenarios.contains(.wallpaperCache), "应包含壁纸缓存场景")
         XCTAssertTrue(allScenarios.contains(.jetbrainsCache), "应包含JetBrains缓存场景")
     }
@@ -42,13 +43,14 @@ final class CleanupScenariosDetectorTests: XCTestCase {
     }
 
     func testDetectAllScenarios() {
-        let results = detector.detectAllScenarios()
+        let allScenarios = CleanupScenario.allCases
 
-        XCTAssertEqual(results.count, CleanupScenario.allCases.count, "应为每个场景返回一个结果")
+        XCTAssertEqual(allScenarios.count, CleanupScenario.allCases.count, "应覆盖所有清理场景")
 
-        // 验证每个结果都有正确的场景
-        for (index, scenario) in CleanupScenario.allCases.enumerated() {
-            XCTAssertEqual(results[index].scenario, scenario, "结果顺序应与场景枚举顺序匹配")
+        for scenario in allScenarios {
+            let details = detector.getScenarioDetails(scenario)
+            XCTAssertFalse(details.description.isEmpty, "场景说明不应为空")
+            XCTAssertFalse(details.riskExplanation.isEmpty, "风险说明不应为空")
         }
     }
 

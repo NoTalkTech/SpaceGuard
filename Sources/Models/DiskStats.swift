@@ -1,10 +1,16 @@
 import Foundation
 
-struct DiskStats: Identifiable {
+struct DiskStats: Identifiable, Codable, Equatable {
     let id = UUID()
     let total: Int64
     let used: Int64
     let free: Int64
+
+    enum CodingKeys: String, CodingKey {
+        case total
+        case used
+        case free
+    }
 
     var usedPercentage: Double {
         guard total > 0 else { return 0 }

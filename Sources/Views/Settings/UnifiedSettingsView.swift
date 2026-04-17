@@ -2,6 +2,7 @@ import SwiftUI
 
 struct UnifiedSettingsView: View {
     @Binding var rules: CleanupRules
+    @Binding var storageGoal: StorageGoal
     @Binding var showResetConfirmation: Bool
     @Binding var showAddOverride: Bool
     @Binding var showAddPattern: Bool
@@ -10,12 +11,16 @@ struct UnifiedSettingsView: View {
     @Binding var showSaveSuccess: Bool
     @Binding var saveMessage: String
 
-    let saveRules: () -> Void
+    let saveSettings: () -> Void
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 safetySection
+
+                Divider()
+
+                cleanupGoalSection
 
                 Divider()
 
@@ -112,6 +117,37 @@ struct UnifiedSettingsView: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    private var cleanupGoalSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Cleanup Goal")
+                .font(.system(size: 15, weight: .semibold))
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text("Cleanup Plan uses these targets to decide whether disk space is healthy and how much space needs to be reclaimed.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Stepper(value: minimumFreeSpaceGBBinding, in: 20...500, step: 10) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Minimum free space")
+                    Text("\(minimumFreeSpaceGBBinding.wrappedValue) GB")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            Stepper(value: minimumFreePercentBinding, in: 10...50, step: 5) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Minimum free percent")
+                    Text("\(minimumFreePercentBinding.wrappedValue)% of total disk")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
             }
         }
     }
@@ -245,7 +281,7 @@ struct UnifiedSettingsView: View {
     private var actionSection: some View {
         HStack(spacing: 12) {
             Button("Save Settings") {
-                saveRules()
+                saveSettings()
             }
             .buttonStyle(.borderedProminent)
 
@@ -282,5 +318,27 @@ struct UnifiedSettingsView: View {
         }
 
         return "Allowed: \(whitelist.joined(separator: ", ")) • Excluded: \(blacklist.joined(separator: ", "))"
+    }
+
+    private var minimumFreeSpaceGBBinding: Binding<Int> {
+        Binding(
+            get: {
+                max(1, Int(storageGoal.minimumFreeBytes / (1024 * 1024 * 1024)))
+            },
+            set: { newValue in
+                storageGoal.minimumFreeBytes = Int64(newValue) * 1024 * 1024 * 1024
+            }
+        )
+    }
+
+    private var minimumFreePercentBinding: Binding<Int> {
+        Binding(
+            get: {
+                Int((storageGoal.minimumFreePercent * 100).rounded())
+            },
+            set: { newValue in
+                storageGoal.minimumFreePercent = Double(newValue) / 100.0
+            }
+        )
     }
 }
