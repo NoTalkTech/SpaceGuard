@@ -19,6 +19,12 @@ protocol CleanupEngineProtocol {
         progress: @escaping (Int, Int, Int64) -> Void
     ) async -> CleanupEngine.CleanupResult
 
+    func executeScenarioCleanup(
+        _ scenario: CleanupScenario,
+        rules: CleanupRules,
+        progress: @escaping (Int, Int, Int64) -> Void
+    ) async -> CleanupEngine.CleanupResult
+
     func cancelCleanup()
     func getQuickCleanupPaths() -> [String]
 }

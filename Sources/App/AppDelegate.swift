@@ -9,6 +9,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var menu: NSMenu!
     var settingsWindow: NSWindow?
     var quickCleanupWindow: NSWindow?
+    var cleanupResultWindow: NSWindow?
     private var diskStats: DiskStats?
     @MainActor private lazy var dependencies = AppDependencies()
     private let filePreviewer = FilePreviewer()
@@ -151,7 +152,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         Task { @MainActor in
-            await startQuickCleanupReview()
+            presentCleanupPlan()
         }
     }
 
@@ -473,6 +474,174 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @MainActor
+    private func presentCleanupPlan() {
+        guard let stats = dependencies.scanner.getDiskUsage() else {
+            showNotification(title: "Quick Cleanup", message: "Unable to read disk usage")
+            return
+        }
+
+        let rules = dependencies.rulesPersistence.loadRules()
+        let goal = dependencies.storageGoalPersistence.loadGoal()
+        let scenarioResults = dependencies.scenariosDetector.detectAllScenarios()
+        let plan = dependencies.cleanupPlanner.makePlan(
+            stats: stats,
+            rules: rules,
+            scenarioResults: scenarioResults,
+            goal: goal
+        )
+
+        let planView = CleanupPlanView(
+            plan: plan,
+            onConfirm: { [weak self] selectedItems in
+                guard let self = self else { return }
+                self.quickCleanupWindow?.close()
+                self.quickCleanupWindow = nil
+                Task { @MainActor in
+                    await self.performCleanupPlan(
+                        plan: plan,
+                        selectedItems: selectedItems,
+                        rules: rules
+                    )
+                }
+            },
+            onCancel: { [weak self] in
+                self?.quickCleanupWindow?.close()
+                self?.quickCleanupWindow = nil
+            }
+        )
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 820, height: 680),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        window.center()
+        window.title = "Cleanup Plan"
+        window.isReleasedWhenClosed = false
+        window.contentView = NSHostingView(rootView: planView)
+
+        quickCleanupWindow = window
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @MainActor
+    private func performCleanupPlan(
+        plan: CleanupPlan,
+        selectedItems: [CleanupPlanItem],
+        rules: CleanupRules
+    ) async {
+        let executableItems = selectedItems.filter { $0.actionType != .suggestOnly }
+
+        guard !executableItems.isEmpty else {
+            showNotification(title: "Cleanup Plan", message: "No executable cleanup items selected")
+            return
+        }
+
+        let freeSpaceBefore = dependencies.scanner.getDiskUsage()?.free
+
+        progressTracker.setDisplayState(
+            isCleaning: true,
+            currentProgress: 0,
+            currentStatus: "Starting cleanup plan",
+            currentOperation: "Cleanup Plan",
+            filesProcessed: 0,
+            totalFiles: executableItems.count,
+            spaceFreed: 0,
+            force: true
+        )
+
+        let summary = await dependencies.cleanupExecutionCoordinator.execute(
+            items: executableItems,
+            rules: rules
+        ) { [weak self] update in
+            Task { @MainActor in
+                guard let self = self else { return }
+                self.progressTracker.setDisplayState(
+                    currentProgress: update.overallProgress,
+                    currentStatus: "Cleaning \(update.currentItemTitle)",
+                    currentOperation: update.currentItemTitle,
+                    filesProcessed: update.currentItemIndex,
+                    totalFiles: update.totalItems,
+                    spaceFreed: update.totalSpaceFreed
+                )
+            }
+        }
+
+        let freeSpaceAfter = dependencies.scanner.getDiskUsage()?.free
+        let reachedGoalAfterExecution = freeSpaceAfter.map { $0 >= plan.health.targetFreeBytes }
+
+        progressTracker.setDisplayState(
+            isCleaning: false,
+            currentProgress: 1,
+            currentStatus: "Cleanup plan complete: \(ByteCountFormatter.string(fromByteCount: summary.spaceFreed, countStyle: .file)) freed",
+            currentOperation: "Cleanup Plan",
+            filesProcessed: summary.executedItems.count,
+            totalFiles: executableItems.count,
+            spaceFreed: summary.spaceFreed,
+            force: true
+        )
+
+        var record = CleanupHistoryRecord(
+            id: UUID(),
+            timestamp: Date(),
+            cleanupType: .scenario,
+            filesDeleted: summary.filesDeleted,
+            spaceFreed: summary.spaceFreed,
+            duration: summary.duration,
+            errors: summary.errors.count,
+            wasCancelled: false
+        )
+        record.freeSpaceBefore = freeSpaceBefore
+        record.freeSpaceAfter = freeSpaceAfter
+        record.goalTargetBytes = plan.health.targetFreeBytes
+        record.planItemsExecuted = summary.executedItems.map(\.title)
+        record.reachedGoalAfterExecution = reachedGoalAfterExecution
+        dependencies.historyManager.addRecord(record)
+
+        let freedText = ByteCountFormatter.string(fromByteCount: summary.spaceFreed, countStyle: .file)
+        let notificationMessage: String
+        if let reachedGoalAfterExecution {
+            notificationMessage = reachedGoalAfterExecution
+                ? "Freed \(freedText). Disk space is back within the configured target."
+                : "Freed \(freedText), but disk space is still below the configured target."
+        } else {
+            notificationMessage = "Freed \(freedText) from \(executableItems.count) item(s)"
+        }
+
+        showNotification(title: "Cleanup Plan Complete", message: notificationMessage)
+        updateDiskInfo()
+        presentCleanupResult(record: record)
+    }
+
+    @MainActor
+    private func presentCleanupResult(record: CleanupHistoryRecord) {
+        let resultView = CleanupResultView(
+            record: record,
+            onDone: { [weak self] in
+                self?.cleanupResultWindow?.close()
+                self?.cleanupResultWindow = nil
+            }
+        )
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 560, height: 520),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        window.center()
+        window.title = "Cleanup Result"
+        window.isReleasedWhenClosed = false
+        window.contentView = NSHostingView(rootView: resultView)
+
+        cleanupResultWindow = window
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @MainActor
     private func startQuickCleanupReview() async {
         progressTracker.setDisplayState(
             isScanning: false,
@@ -689,6 +858,9 @@ extension AppDelegate: NSWindowDelegate {
                 )
             }
             quickCleanupWindow = nil
+        }
+        if let window = notification.object as? NSWindow, window == cleanupResultWindow {
+            cleanupResultWindow = nil
         }
     }
 }

@@ -122,6 +122,12 @@ struct CleanupHistoryRowView: View {
                     Label(record.formattedSpaceFreed, systemImage: "internaldrive")
                         .font(.caption)
                         .foregroundColor(.secondary)
+
+                    if let reachedGoal = record.reachedGoalAfterExecution {
+                        Label(reachedGoal ? "Goal reached" : "Goal not reached", systemImage: reachedGoal ? "target" : "scope")
+                            .font(.caption)
+                            .foregroundColor(reachedGoal ? .green : .orange)
+                    }
                 }
             }
 
@@ -222,6 +228,42 @@ struct CleanupHistoryDetailView: View {
                     icon: record.wasCancelled ? "xmark.circle.fill" : "checkmark.circle.fill",
                     color: record.wasCancelled ? .orange : .green
                 )
+
+                if let freeSpaceBefore = record.freeSpaceBefore {
+                    HistorySummaryCard(
+                        title: "Free Before",
+                        value: formatBytes(freeSpaceBefore),
+                        icon: "arrow.down.circle.fill",
+                        color: .orange
+                    )
+                }
+
+                if let freeSpaceAfter = record.freeSpaceAfter {
+                    HistorySummaryCard(
+                        title: "Free After",
+                        value: formatBytes(freeSpaceAfter),
+                        icon: "arrow.up.circle.fill",
+                        color: .blue
+                    )
+                }
+
+                if let goalTargetBytes = record.goalTargetBytes {
+                    HistorySummaryCard(
+                        title: "Goal Target",
+                        value: formatBytes(goalTargetBytes),
+                        icon: "target",
+                        color: .purple
+                    )
+                }
+
+                if let reachedGoal = record.reachedGoalAfterExecution {
+                    HistorySummaryCard(
+                        title: "Goal Status",
+                        value: reachedGoal ? "Reached" : "Below target",
+                        icon: reachedGoal ? "checkmark.seal.fill" : "exclamationmark.triangle.fill",
+                        color: reachedGoal ? .green : .orange
+                    )
+                }
             }
         }
     }
@@ -235,8 +277,27 @@ struct CleanupHistoryDetailView: View {
                 DetailRow(label: "Operation Type", value: record.cleanupType.rawValue)
                 DetailRow(label: "Date & Time", value: record.formattedDate)
                 DetailRow(label: "Errors", value: record.errors > 0 ? "\(record.errors)" : "None")
+
+                if let planItemsExecuted = record.planItemsExecuted, !planItemsExecuted.isEmpty {
+                    Divider()
+                        .padding(.vertical, 4)
+
+                    Text("Executed Items")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+
+                    ForEach(planItemsExecuted, id: \.self) { item in
+                        Text("• \(item)")
+                            .font(.caption)
+                            .foregroundColor(.primary)
+                    }
+                }
             }
         }
+    }
+
+    private func formatBytes(_ bytes: Int64) -> String {
+        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
     }
 }
 

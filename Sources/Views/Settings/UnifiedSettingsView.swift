@@ -2,20 +2,28 @@ import SwiftUI
 
 struct UnifiedSettingsView: View {
     @Binding var rules: CleanupRules
+    @Binding var storageGoal: StorageGoal
     @Binding var showResetConfirmation: Bool
     @Binding var showAddOverride: Bool
     @Binding var showAddPattern: Bool
     @Binding var showConfigureSchedule: Bool
     @Binding var showFileTypeRulesEditor: Bool
+    @Binding var showIncludedLocationsEditor: Bool
+    @Binding var showExcludedLocationsEditor: Bool
+    @Binding var showAppCachesEditor: Bool
     @Binding var showSaveSuccess: Bool
     @Binding var saveMessage: String
 
-    let saveRules: () -> Void
+    let saveSettings: () -> Void
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 safetySection
+
+                Divider()
+
+                cleanupGoalSection
 
                 Divider()
 
@@ -77,22 +85,28 @@ struct UnifiedSettingsView: View {
                 .font(.system(size: 15, weight: .semibold))
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            EditableListSection(
+            ScopeSummaryCard(
                 title: "Included Locations",
-                items: $rules.includeLocations,
-                placeholder: "Add location path..."
+                items: rules.includeLocations,
+                caption: "Paths that SpaceGuard will scan for rule-driven cleanup.",
+                actionTitle: "Edit...",
+                action: { showIncludedLocationsEditor = true }
             )
 
-            EditableListSection(
+            ScopeSummaryCard(
                 title: "Excluded Locations",
-                items: $rules.excludeLocations,
-                placeholder: "Add excluded path..."
+                items: rules.excludeLocations,
+                caption: "Paths that are always skipped, even if they match cleanup rules.",
+                actionTitle: "Edit...",
+                action: { showExcludedLocationsEditor = true }
             )
 
-            EditableListSection(
-                title: "App Caches to Clean",
-                items: $rules.appCachesToClean,
-                placeholder: "Add app bundle ID..."
+            ScopeSummaryCard(
+                title: "App Caches To Clean",
+                items: rules.appCachesToClean,
+                caption: "Bundle identifiers used for app-specific cache cleanup scenarios.",
+                actionTitle: "Edit...",
+                action: { showAppCachesEditor = true }
             )
 
             VStack(alignment: .leading, spacing: 12) {
@@ -112,6 +126,37 @@ struct UnifiedSettingsView: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    private var cleanupGoalSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Cleanup Goal")
+                .font(.system(size: 15, weight: .semibold))
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text("Cleanup Plan uses these targets to decide whether disk space is healthy and how much space needs to be reclaimed.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Stepper(value: minimumFreeSpaceGBBinding, in: 20...500, step: 10) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Minimum free space")
+                    Text("\(minimumFreeSpaceGBBinding.wrappedValue) GB")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            Stepper(value: minimumFreePercentBinding, in: 10...50, step: 5) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Minimum free percent")
+                    Text("\(minimumFreePercentBinding.wrappedValue)% of total disk")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
             }
         }
     }
@@ -245,7 +290,7 @@ struct UnifiedSettingsView: View {
     private var actionSection: some View {
         HStack(spacing: 12) {
             Button("Save Settings") {
-                saveRules()
+                saveSettings()
             }
             .buttonStyle(.borderedProminent)
 
@@ -282,5 +327,81 @@ struct UnifiedSettingsView: View {
         }
 
         return "Allowed: \(whitelist.joined(separator: ", ")) • Excluded: \(blacklist.joined(separator: ", "))"
+    }
+
+    private var minimumFreeSpaceGBBinding: Binding<Int> {
+        Binding(
+            get: {
+                max(1, Int(storageGoal.minimumFreeBytes / (1024 * 1024 * 1024)))
+            },
+            set: { newValue in
+                storageGoal.minimumFreeBytes = Int64(newValue) * 1024 * 1024 * 1024
+            }
+        )
+    }
+
+    private var minimumFreePercentBinding: Binding<Int> {
+        Binding(
+            get: {
+                Int((storageGoal.minimumFreePercent * 100).rounded())
+            },
+            set: { newValue in
+                storageGoal.minimumFreePercent = Double(newValue) / 100.0
+            }
+        )
+    }
+}
+
+private struct ScopeSummaryCard: View {
+    let title: String
+    let items: [String]
+    let caption: String
+    let actionTitle: String
+    let action: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.system(size: 15, weight: .semibold))
+
+                    Text("\(items.count) item\(items.count == 1 ? "" : "s")")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+
+                Button(actionTitle, action: action)
+                    .buttonStyle(.bordered)
+            }
+
+            Text(itemsPreview)
+                .font(.caption)
+                .foregroundColor(.primary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text(caption)
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.secondary.opacity(0.08))
+        .cornerRadius(10)
+    }
+
+    private var itemsPreview: String {
+        guard !items.isEmpty else {
+            return "No items configured."
+        }
+
+        let preview = items.prefix(3).joined(separator: ", ")
+        if items.count > 3 {
+            return "\(preview), and \(items.count - 3) more"
+        }
+        return preview
     }
 }

@@ -3,12 +3,16 @@ import SwiftUI
 @MainActor
 struct SettingsView: View {
     @State private var rules = RulesPersistenceService().loadRules()
+    @State private var storageGoal = StorageGoalPersistenceService().loadGoal()
 
     // Dialog states
     @State private var showAddOverride = false
     @State private var showAddPattern = false
     @State private var showConfigureSchedule = false
     @State private var showFileTypeRulesEditor = false
+    @State private var showIncludedLocationsEditor = false
+    @State private var showExcludedLocationsEditor = false
+    @State private var showAppCachesEditor = false
 
     // Save feedback
     @State private var showSaveSuccess = false
@@ -24,14 +28,18 @@ struct SettingsView: View {
     var body: some View {
         UnifiedSettingsView(
             rules: $rules,
+            storageGoal: $storageGoal,
             showResetConfirmation: $showResetConfirmation,
             showAddOverride: $showAddOverride,
             showAddPattern: $showAddPattern,
             showConfigureSchedule: $showConfigureSchedule,
             showFileTypeRulesEditor: $showFileTypeRulesEditor,
+            showIncludedLocationsEditor: $showIncludedLocationsEditor,
+            showExcludedLocationsEditor: $showExcludedLocationsEditor,
+            showAppCachesEditor: $showAppCachesEditor,
             showSaveSuccess: $showSaveSuccess,
             saveMessage: $saveMessage,
-            saveRules: saveRules
+            saveSettings: saveSettings
         )
         .frame(width: 700, height: 500)
         .sheet(isPresented: $showAddOverride) {
@@ -40,7 +48,7 @@ struct SettingsView: View {
                 customRiskOverrides: $rules.customRiskOverrides
             )
             .onDisappear {
-                saveRules()
+                saveSettings()
             }
         }
         .sheet(isPresented: $showAddPattern) {
@@ -49,7 +57,7 @@ struct SettingsView: View {
                 exclusionPatterns: $rules.exclusionPatterns
             )
             .onDisappear {
-                saveRules()
+                saveSettings()
             }
         }
         .sheet(isPresented: $showConfigureSchedule) {
@@ -58,7 +66,7 @@ struct SettingsView: View {
                 scheduledCleanup: $rules.scheduledCleanup
             )
             .onDisappear {
-                saveRules()
+                saveSettings()
             }
         }
         .sheet(isPresented: $showFileTypeRulesEditor) {
@@ -67,7 +75,46 @@ struct SettingsView: View {
                 fileTypeRules: $rules.fileTypeRules
             )
             .onDisappear {
-                saveRules()
+                saveSettings()
+            }
+        }
+        .sheet(isPresented: $showIncludedLocationsEditor) {
+            StringListEditorView(
+                isPresented: $showIncludedLocationsEditor,
+                items: $rules.includeLocations,
+                title: "Included Locations",
+                subtitle: "These paths are eligible for rule-driven cleanup.",
+                placeholder: "Add location path...",
+                emptyStateText: "No included locations configured."
+            )
+            .onDisappear {
+                saveSettings()
+            }
+        }
+        .sheet(isPresented: $showExcludedLocationsEditor) {
+            StringListEditorView(
+                isPresented: $showExcludedLocationsEditor,
+                items: $rules.excludeLocations,
+                title: "Excluded Locations",
+                subtitle: "Files under these paths are always skipped.",
+                placeholder: "Add excluded path...",
+                emptyStateText: "No excluded locations configured."
+            )
+            .onDisappear {
+                saveSettings()
+            }
+        }
+        .sheet(isPresented: $showAppCachesEditor) {
+            StringListEditorView(
+                isPresented: $showAppCachesEditor,
+                items: $rules.appCachesToClean,
+                title: "App Caches To Clean",
+                subtitle: "Bundle identifiers used for app-specific cache cleanup.",
+                placeholder: "Add app bundle ID...",
+                emptyStateText: "No app cache identifiers configured."
+            )
+            .onDisappear {
+                saveSettings()
             }
         }
         .overlay(alignment: .bottom) {
@@ -100,7 +147,7 @@ struct SettingsView: View {
         }
     }
 
-    private func saveRules() {
+    private func saveSettings() {
         let ruleManager = RuleManager()
         let (_, conflicts) = ruleManager.validateRules(rules)
         ruleConflicts = conflicts
@@ -113,6 +160,7 @@ struct SettingsView: View {
         }
 
         RulesPersistenceService().saveRules(rules)
+        StorageGoalPersistenceService().saveGoal(storageGoal)
         showSaveSuccess = true
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {

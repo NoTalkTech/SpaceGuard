@@ -4,6 +4,8 @@ import Foundation
 class CleanupScenariosDetector {
 
     private let fileManager = FileManager.default
+    private let installerExtensions = Set(["dmg", "pkg", "zip"])
+    private let installerAgeThresholdDays = 30
 
     /// 检测所有场景
     func detectAllScenarios() -> [ScenarioDetectionResult] {
@@ -12,6 +14,10 @@ class CleanupScenariosDetector {
 
     /// 检测特定场景
     func detectScenario(_ scenario: CleanupScenario) -> ScenarioDetectionResult {
+        if scenario == .downloadInstallers {
+            return detectDownloadInstallersScenario()
+        }
+
         var detectedPaths: [String] = []
         var totalSize: Int64 = 0
         var lastModified: Date? = nil
@@ -22,9 +28,11 @@ class CleanupScenariosDetector {
                 if fileManager.fileExists(atPath: path) {
                     detectedPaths.append(path)
 
-                    // 计算目录大小
-                    if let size = calculateDirectorySize(path) {
-                        totalSize += size
+                    // 命令型场景使用粗估值，避免遍历大型目录（例如 Homebrew Cellar）
+                    if !scenario.usesCommandLine {
+                        if let size = calculateDirectorySize(path) {
+                            totalSize += size
+                        }
                     }
 
                     // 获取最后修改时间
@@ -38,9 +46,8 @@ class CleanupScenariosDetector {
             }
         }
 
-        // 对于命令行清理的场景，尝试预估节省空间
-        if scenario.usesCommandLine && detectedPaths.isEmpty {
-            // 即使路径不存在，也可能有缓存可以清理
+        // 对于命令行清理的场景，使用粗略估计而不是扫描整个目录树。
+        if scenario.usesCommandLine {
             totalSize = estimateCommandCleanupSpace(scenario)
         }
 
@@ -73,6 +80,8 @@ class CleanupScenariosDetector {
         switch scenario {
         case .trash:
             riskExplanation = "废纸篓中的文件是用户明确删除的，清理风险极低。"
+        case .downloadInstallers:
+            riskExplanation = "下载目录中的旧安装包通常可以重新下载，但仍需要用户主动确认。"
         case .wallpaperCache:
             riskExplanation = "壁纸缓存是系统自动下载的视频文件，删除后需要时会重新下载。"
         case .jetbrainsCache, .jetbrainsLogs:
@@ -93,6 +102,57 @@ class CleanupScenariosDetector {
     }
 
     // MARK: - 私有辅助方法
+
+    private func detectDownloadInstallersScenario() -> ScenarioDetectionResult {
+        let downloadsPath = NSHomeDirectory() + "/Downloads"
+        let downloadsURL = URL(fileURLWithPath: downloadsPath)
+
+        guard let files = try? fileManager.contentsOfDirectory(
+            at: downloadsURL,
+            includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey, .isDirectoryKey],
+            options: [.skipsHiddenFiles, .skipsPackageDescendants]
+        ) else {
+            return ScenarioDetectionResult(
+                scenario: .downloadInstallers,
+                detected: false,
+                estimatedSpace: 0,
+                detectedPaths: [],
+                lastModified: nil
+            )
+        }
+
+        var detectedPaths: [String] = []
+        var totalSize: Int64 = 0
+        var lastModified: Date?
+
+        for fileURL in files {
+            guard let values = try? fileURL.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey]),
+                  values.isDirectory != true else {
+                continue
+            }
+
+            let fileExtension = fileURL.pathExtension.lowercased()
+            guard installerExtensions.contains(fileExtension) else { continue }
+
+            let modifiedDate = values.contentModificationDate ?? .distantFuture
+            guard daysSince(modifiedDate) >= installerAgeThresholdDays else { continue }
+
+            detectedPaths.append(fileURL.path)
+            totalSize += Int64(values.fileSize ?? 0)
+
+            if lastModified == nil || modifiedDate > lastModified! {
+                lastModified = modifiedDate
+            }
+        }
+
+        return ScenarioDetectionResult(
+            scenario: .downloadInstallers,
+            detected: !detectedPaths.isEmpty,
+            estimatedSpace: totalSize,
+            detectedPaths: detectedPaths.sorted(),
+            lastModified: lastModified
+        )
+    }
 
     private func expandPathPattern(_ pattern: String) -> [String] {
         if pattern.contains("*") {
@@ -185,6 +245,10 @@ class CleanupScenariosDetector {
         default:
             return 0
         }
+    }
+
+    private func daysSince(_ date: Date) -> Int {
+        Calendar.current.dateComponents([.day], from: date, to: Date()).day ?? 0
     }
 }
 
